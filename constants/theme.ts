@@ -1,41 +1,102 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * 369 Advertisement — design tokens.
+ * Indigo → violet brand system with light/dark surfaces.
  */
-
 import { Platform } from 'react-native';
-
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+    text: '#1f2937',
+    textMuted: '#6b7280',
+    background: '#f4f5f7',
+    card: '#ffffff',
+    tint: '#4f46e5',
+    icon: '#6b7280',
+    border: '#eceef2',
+    tabIconDefault: '#9aa0ac',
+    tabIconSelected: '#4f46e5',
+    tabBar: '#ffffff',
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
+    text: '#f5f6fa',
+    textMuted: '#9aa0ac',
+    background: '#0b0b12',
+    card: '#16161f',
+    tint: '#9b8cff',
+    icon: '#9aa0ac',
+    border: '#24242f',
+    tabIconDefault: '#6b7280',
+    tabIconSelected: '#9b8cff',
+    tabBar: '#12121b',
   },
 };
 
+export type ColorScheme = keyof typeof Colors;
+
+/** Brand constants that stay the same in light & dark. */
+export const Brand = {
+  indigo: '#4f46e5',
+  indigoDeep: '#4338ca',
+  violet: '#7c3aed',
+  cyan: '#22d3ee',
+  amber: '#f59e0b',
+  rose: '#f43f5e',
+  emerald: '#10b981',
+  /** Primary hero gradient. */
+  gradient: ['#4f46e5', '#7c3aed'] as const,
+  /** Deep splash gradient (top → bottom). */
+  splash: ['#312e81', '#4f46e5', '#7c3aed'] as const,
+};
+
+/** A palette of gradients we cycle through for cards / banners. */
+export const Gradients: [string, string][] = [
+  ['#4f46e5', '#7c3aed'],
+  ['#f43f5e', '#f59e0b'],
+  ['#06b6d4', '#3b82f6'],
+  ['#10b981', '#06b6d4'],
+  ['#8b5cf6', '#ec4899'],
+  ['#f59e0b', '#ef4444'],
+];
+
+export const Radius = {
+  sm: 10,
+  md: 16,
+  lg: 22,
+  xl: 28,
+  pill: 999,
+} as const;
+
+export const Spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  xxl: 32,
+} as const;
+
+export const Shadow = {
+  card: {
+    shadowColor: '#4f46e5',
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  soft: {
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+} as const;
+
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {
@@ -45,9 +106,9 @@ export const Fonts = Platform.select({
     mono: 'monospace',
   },
   web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     serif: "Georgia, 'Times New Roman', serif",
-    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
-    mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, sans-serif",
+    mono: "SFMono-Regular, Menlo, Monaco, Consolas, monospace",
   },
 });

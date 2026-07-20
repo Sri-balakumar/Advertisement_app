@@ -1,98 +1,155 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import {
+  Dimensions,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useColorScheme,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { BannerCarousel } from '@/components/banner-carousel';
+import { CategoryPill } from '@/components/category-pill';
+import { OfferCard } from '@/components/offer-card';
+import { SectionHeader } from '@/components/section-header';
+import { Colors, Radius } from '@/constants/theme';
+import { BANNERS, CATEGORIES, PRODUCTS, TRENDING } from '@/data/mock';
+
+const SCREEN = Dimensions.get('window').width;
+const GRID_W = (SCREEN - 40 - 14) / 2;
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const scheme = useColorScheme() ?? 'light';
+  const c = Colors[scheme];
+  const router = useRouter();
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const openProduct = (id: string) =>
+    router.push({ pathname: '/product/[id]', params: { id } });
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.background }} edges={['top']}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 28 }}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={[styles.hello, { color: c.textMuted }]}>Hello 👋</Text>
+            <View style={styles.locRow}>
+              <Ionicons name="location" size={15} color={c.tint} />
+              <Text style={[styles.loc, { color: c.text }]}>Bengaluru, IN</Text>
+              <Ionicons name="chevron-down" size={14} color={c.textMuted} />
+            </View>
+          </View>
+          <Pressable style={[styles.bell, { backgroundColor: c.card, borderColor: c.border }]}>
+            <Ionicons name="notifications-outline" size={20} color={c.text} />
+            <View style={styles.dot} />
+          </Pressable>
+        </View>
+
+        {/* Search */}
+        <Pressable
+          onPress={() => router.push('/offers')}
+          style={[styles.search, { backgroundColor: c.card, borderColor: c.border }]}>
+          <Ionicons name="search" size={18} color={c.textMuted} />
+          <Text style={[styles.searchText, { color: c.textMuted }]}>
+            Search deals, brands, products…
+          </Text>
+        </Pressable>
+
+        {/* Banner carousel */}
+        <View style={{ marginTop: 18 }}>
+          <BannerCarousel banners={BANNERS} onPressBanner={(b) => openProduct(b.productId)} />
+        </View>
+
+        {/* Categories */}
+        <View style={styles.block}>
+          <SectionHeader title="Categories" onAction={() => router.push('/offers')} />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 6 }}>
+            {CATEGORIES.map((cat) => (
+              <CategoryPill key={cat.id} category={cat} onPress={() => router.push('/offers')} />
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Trending */}
+        <View style={styles.block}>
+          <SectionHeader title="Trending now 🔥" onAction={() => router.push('/offers')} />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 14, paddingRight: 4 }}>
+            {TRENDING.map((p) => (
+              <OfferCard key={p.id} product={p} onPress={() => openProduct(p.id)} />
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Top picks grid */}
+        <View style={styles.block}>
+          <SectionHeader title="Top picks for you" />
+          <View style={styles.grid}>
+            {PRODUCTS.map((p) => (
+              <OfferCard
+                key={p.id}
+                product={p}
+                width={GRID_W}
+                onPress={() => openProduct(p.id)}
+              />
+            ))}
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 6,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  hello: { fontSize: 13, fontWeight: '600' },
+  locRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 3 },
+  loc: { fontSize: 16, fontWeight: '800' },
+  bell: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
+  dot: {
     position: 'absolute',
+    top: 11,
+    right: 12,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#f43f5e',
   },
+  search: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 20,
+    marginTop: 16,
+    height: 50,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+  },
+  searchText: { fontSize: 14 },
+  block: { paddingHorizontal: 20, marginTop: 26 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
 });

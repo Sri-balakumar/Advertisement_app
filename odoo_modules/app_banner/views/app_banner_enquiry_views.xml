@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- List View (Odoo 19 uses <list>, not <tree>) -->
+    <record id="app_banner_enquiry_list_view" model="ir.ui.view">
+        <field name="name">app.banner.enquiry.list</field>
+        <field name="model">app.banner.enquiry</field>
+        <field name="arch" type="xml">
+            <list string="Enquiries" create="0">
+                <field name="create_date" string="Received On"/>
+                <field name="banner_id"/>
+                <field name="name"/>
+                <field name="phone"/>
+                <field name="message" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="app_banner_enquiry_form_view" model="ir.ui.view">
+        <field name="name">app.banner.enquiry.form</field>
+        <field name="model">app.banner.enquiry</field>
+        <field name="arch" type="xml">
+            <form string="Enquiry">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="banner_id"/>
+                            <field name="name"/>
+                            <field name="phone"/>
+                        </group>
+                        <group>
+                            <field name="create_date" string="Received On" readonly="1"/>
+                        </group>
+                    </group>
+                    <group string="Message">
+                        <field name="message" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="app_banner_enquiry_action" model="ir.actions.act_window">
+        <field name="name">Banner Enquiries</field>
+        <field name="res_model">app.banner.enquiry</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No enquiries yet</p>
+            <p>When a customer submits the enquiry form on a banner's public
+               landing page, their details appear here.</p>
+        </field>
+    </record>
+
+    <!-- Menu -->
+    <menuitem id="app_banner_enquiry_menu" name="Enquiries"
+              parent="app_banner_menu_root"
+              action="app_banner_enquiry_action" sequence="30"/>
+
+</odoo>

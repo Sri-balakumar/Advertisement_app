@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Form View -->
+    <record id="ad_banner_form_view" model="ir.ui.view">
+        <field name="name">ad.banner.form</field>
+        <field name="model">ad.banner</field>
+        <field name="arch" type="xml">
+            <form string="Ad">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_scans" type="object"
+                                class="oe_stat_button" icon="fa-qrcode"
+                                invisible="qr_source != 'file' or has_qr">
+                            <field name="scan_count" widget="statinfo" string="Scans"/>
+                        </button>
+                    </div>
+                    <widget name="web_ribbon" title="Archived"
+                            bg_color="text-bg-danger" invisible="active"/>
+
+                    <!-- Step 1: the artwork -->
+                    <field name="image" widget="image" class="oe_avatar"
+                           options="{'size': [400, 250]}"/>
+                    <div class="oe_title">
+                        <label for="name" string="Ad Name"/>
+                        <h1>
+                            <field name="name" placeholder="e.g. Alphalize Summer Promo"/>
+                        </h1>
+                    </div>
+
+                    <group>
+                        <group string="QR">
+                            <field name="has_qr"/>
+                            <field name="qr_source" widget="radio"
+                                   options="{'horizontal': True}"
+                                   invisible="has_qr"/>
+                            <field name="link_url"
+                                   placeholder="e.g. alphalize.com"
+                                   invisible="has_qr or qr_source != 'link'"
+                                   required="not has_qr and qr_source == 'link'"/>
+                            <field name="qr_file" widget="binary"
+                                   filename="qr_filename"
+                                   invisible="has_qr or qr_source != 'file'"
+                                   required="not has_qr and qr_source == 'file'"/>
+                            <field name="qr_filename" invisible="1"/>
+                            <field name="access_code" invisible="1"/>
+                        </group>
+                        <group string="Carousel">
+                            <field name="sequence"/>
+                            <field name="duration_mode" widget="radio"
+                                   options="{'horizontal': True}"/>
+                            <field name="scroll_seconds"
+                                   invisible="duration_mode != 'custom'"
+                                   required="duration_mode == 'custom'"/>
+                            <field name="active"/>
+                            <field name="is_live"/>
+                        </group>
+                    </group>
+
+                    <group string="Scheduling (optional)">
+                        <group>
+                            <field name="date_start"/>
+                            <field name="date_end"/>
+                        </group>
+                    </group>
+
+                    <!-- Friendly explanation of the display modes -->
+                    <div class="alert alert-info" role="alert" invisible="not has_qr">
+                        <i class="fa fa-check-circle me-1"/>
+                        This image already has its own QR — the app shows it
+                        <b>full-screen</b>. No link or file needed.
+                    </div>
+                    <div class="alert alert-info" role="alert" invisible="has_qr">
+                        <i class="fa fa-info-circle me-1"/>
+                        No QR on the image — the app shows your image with a QR below
+                        it, pointing at the <b>Link</b> or <b>File</b> selected above.
+                        Save to (re)generate the QR.
+                    </div>
+
+                    <!-- Live preview of the generated QR -->
+                    <group string="Generated QR"
+                           invisible="has_qr or (qr_source == 'link' and not link_url) or (qr_source == 'file' and not qr_file)">
+                        <field name="qr_image" widget="image" nolabel="1"
+                               options="{'size': [180, 180]}"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- List View -->
+    <record id="ad_banner_list_view" model="ir.ui.view">
+        <field name="name">ad.banner.list</field>
+        <field name="model">ad.banner</field>
+        <field name="arch" type="xml">
+            <list string="Ads">
+                <field name="sequence" widget="handle"/>
+                <field name="image" widget="image" class="oe_avatar"
+                       options="{'size': [120, 75]}"/>
+                <field name="name"/>
+                <field name="has_qr" string="Own QR"/>
+                <field name="qr_source" string="QR"/>
+                <field name="link_url" optional="show"/>
+                <field name="duration_mode" string="Timing" optional="show"/>
+                <field name="date_start" optional="hide"/>
+                <field name="date_end" optional="show"/>
+                <field name="is_live" optional="show"/>
+                <field name="scan_count" string="Scans" optional="show"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Kanban View -->
+    <record id="ad_banner_kanban_view" model="ir.ui.view">
+        <field name="name">ad.banner.kanban</field>
+        <field name="model">ad.banner</field>
+        <field name="arch" type="xml">
+            <kanban>
+                <field name="id"/>
+                <field name="name"/>
+                <field name="active"/>
+                <field name="has_qr"/>
+                <field name="is_live"/>
+                <field name="write_date"/>
+                <templates>
+                    <t t-name="card">
+                        <img t-attf-src="/web/image/ad.banner/{{record.id.raw_value}}/image?unique={{record.write_date.raw_value}}"
+                             alt="Ad" class="w-100 rounded"
+                             style="aspect-ratio: 16 / 10; object-fit: cover;"/>
+                        <div class="mt-2 d-flex align-items-center flex-wrap gap-1">
+                            <strong class="me-1">
+                                <field name="name"/>
+                            </strong>
+                            <span t-if="record.has_qr.raw_value"
+                                  class="badge text-bg-success">Full-screen</span>
+                            <span t-else="" class="badge text-bg-primary">Image + QR</span>
+                            <span t-if="record.is_live.raw_value"
+                                  class="badge text-bg-info">Live</span>
+                            <span t-if="!record.active.raw_value"
+                                  class="badge text-bg-secondary">Archived</span>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="ad_banner_search_view" model="ir.ui.view">
+        <field name="name">ad.banner.search</field>
+        <field name="model">ad.banner</field>
+        <field name="arch" type="xml">
+            <search string="Search Ads">
+                <field name="name"/>
+                <field name="link_url"/>
+                <filter string="Live now" name="live" domain="[('is_live', '=', True)]"/>
+                <filter string="Active" name="active" domain="[('active', '=', True)]"/>
+                <filter string="Archived" name="inactive" domain="[('active', '=', False)]"/>
+                <separator/>
+                <filter string="Image has own QR" name="own_qr" domain="[('has_qr', '=', True)]"/>
+                <filter string="Link QR" name="link_qr" domain="[('has_qr', '=', False), ('qr_source', '=', 'link')]"/>
+                <filter string="File QR" name="file_qr" domain="[('has_qr', '=', False), ('qr_source', '=', 'file')]"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action -->
+    <record id="ad_banner_action" model="ir.actions.act_window">
+        <field name="name">Ads</field>
+        <field name="res_model">ad.banner</field>
+        <field name="view_mode">kanban,list,form</field>
+        <field name="search_view_id" ref="ad_banner_search_view"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Add your first ad</p>
+            <p>
+                Upload an advertisement image. If it already has a QR printed on it,
+                tick the box (shown full-screen). Otherwise point the generated QR
+                at a link or an uploaded file.
+            </p>
+        </field>
+    </record>
+
+    <!-- Scan List View -->
+    <record id="ad_banner_scan_list_view" model="ir.ui.view">
+        <field name="name">ad.banner.scan.list</field>
+        <field name="model">ad.banner.scan</field>
+        <field name="arch" type="xml">
+            <list string="Scans" create="0" edit="0">
+                <field name="create_date" string="Scanned On"/>
+                <field name="banner_id"/>
+                <field name="country_name"/>
+                <field name="ip_address"/>
+                <field name="referrer" optional="hide"/>
+                <field name="user_agent" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="ad_banner_scan_action" model="ir.actions.act_window">
+        <field name="name">Ad Scans</field>
+        <field name="res_model">ad.banner.scan</field>
+        <field name="view_mode">list</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No scans yet</p>
+            <p>Each time someone opens a file/document QR, a row appears here.</p>
+        </field>
+    </record>
+
+    <!-- Menus -->
+    <menuitem id="ad_carousel_menu_root" name="Ad Carousel"
+              action="ad_banner_action" sequence="101"/>
+    <menuitem id="ad_banner_scan_menu" name="Scans"
+              parent="ad_carousel_menu_root"
+              action="ad_banner_scan_action" sequence="20"/>
+
+</odoo>
