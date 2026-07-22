@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { ComponentProps, useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -11,11 +12,11 @@ import {
   Text,
   TextInput,
   View,
-  useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GradientButton } from '@/components/gradient-button';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Brand, Colors, Radius, Shadow } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { authenticate, listDatabases } from '@/services/odoo';
@@ -30,6 +31,7 @@ export default function LoginScreen() {
   const [db, setDb] = useState('');
   const [dbs, setDbs] = useState<string[]>([]);
   const [dbLoading, setDbLoading] = useState(false);
+  const [dbModalVisible, setDbModalVisible] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -109,35 +111,36 @@ export default function LoginScreen() {
               autoCapitalize="none"
             />
 
-            <Field
-              c={c}
-              icon="server"
-              label="Database"
-              value={db}
-              onChangeText={setDb}
-              placeholder={dbLoading ? 'Loading databases…' : 'Database name'}
-              autoCapitalize="none"
-            />
+            {/* Database: scrollable dropdown when the server lists DBs, else manual entry */}
             {dbs.length > 0 ? (
-              <View style={styles.chips}>
-                {dbs.map((name) => {
-                  const active = name === db;
-                  return (
-                    <Pressable
-                      key={name}
-                      onPress={() => setDb(name)}
-                      style={[
-                        styles.chip,
-                        { borderColor: active ? c.tint : c.border, backgroundColor: active ? c.tint : 'transparent' },
-                      ]}>
-                      <Text style={{ color: active ? '#fff' : c.textMuted, fontSize: 12, fontWeight: '700' }}>
-                        {name}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+              <View style={{ marginTop: 14 }}>
+                <Text style={[styles.label, { color: c.textMuted }]}>Database</Text>
+                <Pressable
+                  onPress={() => setDbModalVisible(true)}
+                  style={[styles.inputRow, { backgroundColor: c.background, borderColor: c.border }]}>
+                  <Ionicons name="server" size={18} color={c.textMuted} />
+                  <Text
+                    style={[styles.input, { color: db ? c.text : c.textMuted }]}
+                    numberOfLines={1}>
+                    {db || 'Select a database'}
+                  </Text>
+                  <View style={styles.dbCount}>
+                    <Text style={styles.dbCountText}>{dbs.length}</Text>
+                  </View>
+                  <Ionicons name="chevron-down" size={18} color={c.textMuted} />
+                </Pressable>
               </View>
-            ) : null}
+            ) : (
+              <Field
+                c={c}
+                icon="server"
+                label="Database"
+                value={db}
+                onChangeText={setDb}
+                placeholder={dbLoading ? 'Loading databases…' : 'Database name'}
+                autoCapitalize="none"
+              />
+            )}
 
             <Field
               c={c}
@@ -180,6 +183,49 @@ export default function LoginScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Scrollable database picker */}
+      <Modal
+        visible={dbModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDbModalVisible(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setDbModalVisible(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: c.card }]} onPress={() => {}}>
+            <View style={styles.modalHead}>
+              <Text style={[styles.modalTitle, { color: c.text }]}>Select database</Text>
+              <Text style={[styles.modalSub, { color: c.textMuted }]}>{dbs.length} available</Text>
+            </View>
+            <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
+              {dbs.map((name) => {
+                const active = name === db;
+                return (
+                  <Pressable
+                    key={name}
+                    onPress={() => {
+                      setDb(name);
+                      setDbModalVisible(false);
+                    }}
+                    style={[styles.dbRow, { borderBottomColor: c.border }]}>
+                    <Ionicons name="server-outline" size={18} color={active ? c.tint : c.textMuted} />
+                    <Text
+                      style={{
+                        flex: 1,
+                        fontSize: 15,
+                        fontWeight: active ? '800' : '500',
+                        color: active ? c.tint : c.text,
+                      }}
+                      numberOfLines={1}>
+                      {name}
+                    </Text>
+                    {active ? <Ionicons name="checkmark" size={18} color={c.tint} /> : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -270,4 +316,30 @@ const styles = StyleSheet.create({
   },
   errorText: { color: '#e11d48', fontSize: 13, flex: 1 },
   powered: { textAlign: 'center', fontSize: 12, marginTop: 18 },
+  dbCount: {
+    backgroundColor: 'rgba(79,70,229,0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  dbCountText: { fontSize: 11, fontWeight: '800', color: '#4f46e5' },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: 28,
+  },
+  modalCard: { borderRadius: 18, overflow: 'hidden', paddingBottom: 6 },
+  modalHead: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 8 },
+  modalTitle: { fontSize: 17, fontWeight: '800' },
+  modalSub: { fontSize: 12, marginTop: 2 },
+  dbRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
 });
+

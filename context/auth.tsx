@@ -1,13 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 
-import { OdooUser } from '@/services/odoo';
+import { canManageAds, OdooUser } from '@/services/odoo';
 
 type AuthContextValue = {
   user: OdooUser | null;
   onboarded: boolean;
   /** True while we load the persisted session on cold start. */
   initializing: boolean;
+  /** True when the signed-in user may create ads (admin/manager). */
+  canManage: boolean;
   signIn: (user: OdooUser) => Promise<void>;
   signOut: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
@@ -19,6 +21,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<OdooUser | null>(null);
   const [onboarded, setOnboarded] = useState(false);
   const [initializing, setInitializing] = useState(true);
+  const [canManage, setCanManage] = useState(false);
+
+  // Re-check admin (create) rights whenever the signed-in user changes.
+  useEffect(() => {
+    let alive = true;
+    if (user?.base_url) {
+      canManageAds(user.base_url).then((v) => {
+        if (alive) setCanManage(v);
+      });
+    } else {
+      setCanManage(false);
+    }
+    return () => {
+      alive = false;
+    };
+  }, [user?.base_url]);
 
   useEffect(() => {
     (async () => {
@@ -64,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, onboarded, initializing, signIn, signOut, completeOnboarding }}>
+      value={{ user, onboarded, initializing, canManage, signIn, signOut, completeOnboarding }}>
       {children}
     </AuthContext.Provider>
   );

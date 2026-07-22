@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- App Settings: the Profile content (address / about / contact emails)
+         the mobile app reads and admins edit. Editable here too, from Odoo. -->
+    <record id="ad_app_settings_form" model="ir.ui.view">
+        <field name="name">ad.app.settings.form</field>
+        <field name="model">ad.app.settings</field>
+        <field name="arch" type="xml">
+            <form string="App Settings">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="support_phone"/>
+                    </group>
+                    <group string="About (shown in the app)">
+                        <field name="about_title"/>
+                        <field name="about_body"/>
+                    </group>
+                    <group string="Address (shown in the app)">
+                        <field name="address"/>
+                    </group>
+                    <group string="Contact Emails (Help &amp; Support)">
+                        <field name="contact_ids" nolabel="1">
+                            <list editable="bottom">
+                                <field name="sequence" widget="handle"/>
+                                <field name="label"/>
+                                <field name="email" widget="email"/>
+                            </list>
+                        </field>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="ad_app_settings_list" model="ir.ui.view">
+        <field name="name">ad.app.settings.list</field>
+        <field name="model">ad.app.settings</field>
+        <field name="arch" type="xml">
+            <list string="App Settings">
+                <field name="name"/>
+                <field name="support_phone"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="ad_app_settings_action" model="ir.actions.act_window">
+        <field name="name">App Settings</field>
+        <field name="res_model">ad.app.settings</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="ad_app_settings_menu" name="App Settings"
+              parent="ad_carousel_menu_root"
+              action="ad_app_settings_action" sequence="30"/>
+
+</odoo>

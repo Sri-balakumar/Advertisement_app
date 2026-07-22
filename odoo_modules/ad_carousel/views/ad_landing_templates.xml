@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Live price page opened when a Product-QR is scanned. Self-contained
+         (own inline CSS + a tiny countdown script), no web.frontend_layout, so
+         it loads fast on a phone. Price is read live from the Odoo product, so
+         changing the price in Odoo updates every scan with no reprint. -->
+    <template id="ad_product_landing" name="Ad Product Landing">
+        <t t-set="price" t-value="product.list_price or 0.0"/>
+        <t t-set="was" t-value="ad.compare_price or 0.0"/>
+        <t t-set="off" t-value="int(round((1 - price / was) * 100)) if (was and was &gt; price) else 0"/>
+        <t t-set="sym" t-value="product.currency_id.symbol or ''"/>
+        <html lang="en">
+            <head>
+                <meta charset="utf-8"/>
+                <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                <title t-esc="product.display_name"/>
+                <style>
+                    * { box-sizing: border-box; }
+                    body {
+                        margin: 0;
+                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                        background: #f4f5f7; color: #1f2937; line-height: 1.5;
+                    }
+                    .wrap { max-width: 640px; margin: 0 auto; padding: 16px; }
+                    .card { background: #fff; border-radius: 16px; overflow: hidden;
+                            box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+                    .hero { width: 100%; aspect-ratio: 1 / 1; object-fit: cover;
+                            display: block; background: #eef0f3; }
+                    .body { padding: 20px 22px 26px; }
+                    h1 { font-size: 1.5rem; margin: 0 0 12px; }
+                    .price-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+                    .price { font-size: 2rem; font-weight: 800; color: #4338ca; }
+                    .was { font-size: 1.05rem; color: #9ca3af; text-decoration: line-through; }
+                    .off { font-size: .85rem; font-weight: 800; color: #fff;
+                           background: #ef4444; padding: 3px 10px; border-radius: 999px; }
+                    .badge { display: inline-block; font-size: .8rem; font-weight: 600;
+                             padding: 4px 12px; border-radius: 999px; margin-top: 12px; }
+                    .badge.ok { background: #dcfce7; color: #166534; }
+                    .badge.no { background: #e5e7eb; color: #4b5563; }
+                    .desc { margin-top: 14px; color: #4b5563; white-space: pre-line; }
+                    .count { margin-top: 16px; background: #fff7ed; color: #9a3412;
+                             border: 1px solid #fed7aa; border-radius: 12px; padding: 10px 14px;
+                             font-weight: 700; font-size: .95rem; text-align: center; }
+                    .count b { font-variant-numeric: tabular-nums; }
+                    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+                    .btn { flex: 1 1 auto; min-width: 130px; text-align: center; text-decoration: none;
+                           font-weight: 700; font-size: .95rem; padding: 12px 18px; border-radius: 12px;
+                           display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+                    .btn.wa { background: #25d366; color: #fff; }
+                    .btn.call { background: #1f2937; color: #fff; }
+                    .foot { margin-top: 20px; font-size: .72rem; color: #9ca3af; text-align: center; }
+                    .thanks { margin-top: 16px; background: #dcfce7; color: #166534;
+                              border: 1px solid #bbf7d0; border-radius: 12px; padding: 12px 14px;
+                              font-weight: 700; text-align: center; }
+                    .enq { margin-top: 22px; border-top: 1px solid #eceef2; padding-top: 18px; }
+                    .enq h2 { font-size: 1.05rem; margin: 0 0 6px; }
+                    .enq label { display: block; font-size: .8rem; font-weight: 700; color: #6b7280;
+                                 margin: 12px 0 4px; }
+                    .enq input, .enq textarea { width: 100%; border: 1px solid #d1d5db;
+                                 border-radius: 10px; padding: 11px 12px; font-size: 1rem;
+                                 font-family: inherit; }
+                    .enq textarea { min-height: 84px; resize: vertical; }
+                    .enq .hp { position: absolute; left: -9999px; width: 1px; height: 1px; }
+                    .enq button { margin-top: 16px; width: 100%; border: 0; background: #4338ca;
+                                 color: #fff; font-weight: 800; font-size: 1rem; padding: 13px;
+                                 border-radius: 12px; cursor: pointer; }
+                </style>
+            </head>
+            <body>
+                <div class="wrap">
+                    <div class="card">
+                        <img t-if="image_uri" t-att-src="image_uri" class="hero" alt="Product"/>
+                        <div class="body">
+                            <h1 t-esc="product.name"/>
+                            <div class="price-row">
+                                <span class="price"><t t-esc="sym"/><t t-esc="'%.2f' % price"/></span>
+                                <span t-if="off" class="was"><t t-esc="sym"/><t t-esc="'%.2f' % was"/></span>
+                                <span t-if="off" class="off"><t t-esc="off"/>% OFF</span>
+                            </div>
+                            <span t-if="product.sale_ok" class="badge ok">In stock</span>
+                            <span t-else="" class="badge no">Currently unavailable</span>
+                            <div t-if="product.description_sale" class="desc"
+                                 t-esc="product.description_sale"/>
+
+                            <!-- Countdown to the ad's end date (offer urgency). -->
+                            <div t-if="ad.date_end" class="count" t-att-data-end="ad.date_end">
+                                Offer ends in <b class="cd">…</b>
+                            </div>
+
+                            <!-- One-tap Order on WhatsApp / Call. -->
+                            <div t-if="cta_digits" class="actions">
+                                <a t-attf-href="https://wa.me/#{cta_digits}?text=I%20want%20#{product.name}"
+                                   class="btn wa" target="_blank" rel="noopener">Order on WhatsApp</a>
+                                <a t-attf-href="tel:+#{cta_digits}" class="btn call">Call</a>
+                            </div>
+
+                            <!-- Thanks banner shown after a submitted enquiry. -->
+                            <div t-if="sent" class="thanks">Thanks — we'll be in touch shortly.</div>
+
+                            <!-- Enquiry form → stores a lead in Odoo (ad.enquiry). -->
+                            <div class="enq">
+                                <h2>Have a question? Send an enquiry</h2>
+                                <form t-attf-action="/ad/enquiry/#{ad.access_code}" method="post">
+                                    <input type="hidden" name="csrf_token"
+                                           t-att-value="request.csrf_token()"/>
+                                    <input class="hp" type="text" name="company"
+                                           autocomplete="off" tabindex="-1"/>
+                                    <label>Your name</label>
+                                    <input type="text" name="name" required="required"
+                                           placeholder="Name"/>
+                                    <label>Phone</label>
+                                    <input type="tel" name="phone" required="required"
+                                           placeholder="Phone number"/>
+                                    <label>Message (optional)</label>
+                                    <textarea name="message" placeholder="Your message"></textarea>
+                                    <button type="submit">Send enquiry</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="foot" t-esc="ad.name or ''"/>
+                </div>
+
+                <script>
+                    (function () {
+                        var el = document.querySelector('.count');
+                        if (!el) return;
+                        var out = el.querySelector('.cd');
+                        var end = new Date(el.getAttribute('data-end') + 'T23:59:59');
+                        function tick() {
+                            var ms = end - new Date();
+                            if (ms &lt;= 0) { el.textContent = 'Offer ended'; return; }
+                            var s = Math.floor(ms / 1000);
+                            var d = Math.floor(s / 86400); s -= d * 86400;
+                            var h = Math.floor(s / 3600); s -= h * 3600;
+                            var m = Math.floor(s / 60); s -= m * 60;
+                            var p = function (n) { return (n &lt; 10 ? '0' : '') + n; };
+                            out.textContent = (d ? d + 'd ' : '') + p(h) + ':' + p(m) + ':' + p(s);
+                        }
+                        tick();
+                        setInterval(tick, 1000);
+                    })();
+                </script>
+            </body>
+        </html>
+    </template>
+
+</odoo>

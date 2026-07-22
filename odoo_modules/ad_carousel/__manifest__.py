@@ -1,6 +1,6 @@
 {
     'name': 'Ad Carousel',
-    'version': '19.0.2.0.0',
+    'version': '19.0.14.0.0',
     'author': 'Alphalize',
     'category': 'Marketing',
     'summary': 'Advertisement images with QR codes for the mobile app carousel',
@@ -20,10 +20,14 @@ For each ad you upload an image. Then:
 
 Kept deliberately simple and separate from the App Banner module.
     """,
-    'depends': ['base', 'web'],
+    'depends': ['base', 'web', 'product'],
     'data': [
         'security/ir.model.access.csv',
         'views/ad_banner_views.xml',
+        'views/ad_settings_views.xml',
+        'views/ad_enquiry_views.xml',
+        'views/ad_landing_templates.xml',
+        'views/ad_preview_templates.xml',
     ],
     'installable': True,
     'application': True,

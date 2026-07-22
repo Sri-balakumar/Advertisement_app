@@ -1,28 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Brand, Colors, Radius, Shadow } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
+import { ThemePref, useThemePreference } from '@/context/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
-type Item = { icon: keyof typeof Ionicons.glyphMap; label: string };
+type Item = { icon: keyof typeof Ionicons.glyphMap; label: string; route: string };
 
 const MENU: Item[] = [
-  { icon: 'bag-handle-outline', label: 'My Orders' },
-  { icon: 'heart-outline', label: 'Wishlist' },
-  { icon: 'location-outline', label: 'Addresses' },
-  { icon: 'card-outline', label: 'Payment Methods' },
-  { icon: 'notifications-outline', label: 'Notifications' },
-  { icon: 'help-circle-outline', label: 'Help & Support' },
-  { icon: 'information-circle-outline', label: 'About 369' },
+  { icon: 'location-outline', label: 'Address', route: '/address' },
+  { icon: 'help-circle-outline', label: 'Help & Support', route: '/support' },
+  { icon: 'information-circle-outline', label: 'About 369', route: '/about' },
 ];
 
-const STATS = [
-  { label: 'Orders', value: '12' },
-  { label: 'Wishlist', value: '8' },
-  { label: 'Coupons', value: '5' },
+const THEME_OPTS: { key: ThemePref; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: 'system', label: 'System', icon: 'phone-portrait-outline' },
+  { key: 'light', label: 'Light', icon: 'sunny-outline' },
+  { key: 'dark', label: 'Dark', icon: 'moon-outline' },
 ];
 
 export default function ProfileScreen() {
@@ -30,6 +28,7 @@ export default function ProfileScreen() {
   const c = Colors[scheme];
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const { pref, setPref } = useThemePreference();
 
   const displayName = user?.name || user?.username || 'Guest';
   const subtitle = user ? `${user.username ?? user.name ?? ''} · ${user.odoo_db}` : 'Not signed in';
@@ -58,16 +57,6 @@ export default function ProfileScreen() {
           </View>
           <Text style={styles.name}>{displayName}</Text>
           <Text style={styles.email}>{subtitle}</Text>
-
-          <View style={styles.statsRow}>
-            {STATS.map((s, i) => (
-              <View key={s.label} style={styles.statItem}>
-                <Text style={styles.statValue}>{s.value}</Text>
-                <Text style={styles.statLabel}>{s.label}</Text>
-                {i < STATS.length - 1 ? <View style={styles.statDivider} /> : null}
-              </View>
-            ))}
-          </View>
         </LinearGradient>
 
         {/* Menu */}
@@ -75,6 +64,7 @@ export default function ProfileScreen() {
           {MENU.map((m, i) => (
             <Pressable
               key={m.label}
+              onPress={() => router.push(m.route as any)}
               style={[styles.row, i < MENU.length - 1 && { borderBottomColor: c.border, borderBottomWidth: 1 }]}>
               <View style={[styles.rowIcon, { backgroundColor: scheme === 'dark' ? '#20202b' : '#eef0ff' }]}>
                 <Ionicons name={m.icon} size={19} color={c.tint} />
@@ -83,6 +73,25 @@ export default function ProfileScreen() {
               <Ionicons name="chevron-forward" size={18} color={c.textMuted} />
             </Pressable>
           ))}
+        </View>
+
+        {/* Appearance — light / dark toggle */}
+        <View style={styles.appearance}>
+          <Text style={[styles.sectionLabel, { color: c.textMuted }]}>APPEARANCE</Text>
+          <View style={[styles.segment, { backgroundColor: c.card, borderColor: c.border }]}>
+            {THEME_OPTS.map((o) => {
+              const active = pref === o.key;
+              return (
+                <Pressable
+                  key={o.key}
+                  onPress={() => setPref(o.key)}
+                  style={[styles.segItem, active && { backgroundColor: c.tint }]}>
+                  <Ionicons name={o.icon} size={16} color={active ? '#fff' : c.textMuted} />
+                  <Text style={[styles.segText, { color: active ? '#fff' : c.text }]}>{o.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
 
         <Pressable onPress={replayIntro} style={[styles.ghost, { borderColor: c.border }]}>
@@ -122,25 +131,6 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontSize: 26, fontWeight: '900' },
   name: { color: '#fff', fontSize: 21, fontWeight: '800', marginTop: 12 },
   email: { color: 'rgba(255,255,255,0.85)', fontSize: 13, marginTop: 2 },
-  statsRow: {
-    flexDirection: 'row',
-    marginTop: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: Radius.lg,
-    paddingVertical: 12,
-    alignSelf: 'stretch',
-  },
-  statItem: { flex: 1, alignItems: 'center' },
-  statValue: { color: '#fff', fontSize: 18, fontWeight: '900' },
-  statLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 2 },
-  statDivider: {
-    position: 'absolute',
-    right: 0,
-    top: 6,
-    bottom: 6,
-    width: 1,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
   menu: {
     marginHorizontal: 20,
     borderRadius: Radius.lg,
@@ -150,6 +140,19 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 14 },
   rowIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   rowLabel: { flex: 1, fontSize: 15, fontWeight: '600' },
+  appearance: { marginHorizontal: 20, marginTop: 22 },
+  sectionLabel: { fontSize: 12, fontWeight: '800', letterSpacing: 1, marginBottom: 10, marginLeft: 4 },
+  segment: { flexDirection: 'row', borderRadius: Radius.md, borderWidth: 1, padding: 4, gap: 4 },
+  segItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: Radius.sm,
+  },
+  segText: { fontSize: 13.5, fontWeight: '700' },
   ghost: {
     marginHorizontal: 20,
     marginTop: 14,

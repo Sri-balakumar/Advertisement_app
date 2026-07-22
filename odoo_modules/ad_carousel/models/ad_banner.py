@@ -21,8 +21,9 @@ class AdBanner(models.Model):
         string='Ad Name', required=True,
         help="Internal label to recognise this ad (not shown to customers).")
     image = fields.Image(
-        string='Ad Image', required=True, max_width=1920, max_height=1920,
-        help="The advertisement artwork shown in the app carousel.")
+        string='Ad Image', max_width=1920, max_height=1920,
+        help="Artwork shown in the app carousel. Required for Image media type; "
+             "for Video it is an optional poster.")
     sequence = fields.Integer(
         string='Sequence', default=10,
         help="Order in the carousel — smaller numbers show first.")
@@ -30,15 +31,18 @@ class AdBanner(models.Model):
 
     # --- QR handling -----------------------------------------------------------
     has_qr = fields.Boolean(
-        string='Image already has a QR', default=False,
-        help="Tick this if the uploaded image already has a QR printed on it. "
+        string='Image or Video already has a QR', default=False,
+        help="Tick this if the uploaded image or video already has a QR in it. "
              "The app then shows the ad full-screen. Leave it unticked to point "
-             "the generated QR at a link or an uploaded file.")
+             "the generated QR at a link, a file, or a product.")
     qr_source = fields.Selection(
-        [('link', 'Website Link'), ('file', 'File / Document')],
+        [('link', 'Website Link'),
+         ('file', 'File / Document'),
+         ('product', 'Product (live price)')],
         string='QR Points To', default='link', required=True,
-        help="What the generated QR opens when scanned: a website link, or a "
-             "file/PDF/image you upload (which we host).")
+        help="What the generated QR opens when scanned: a website link, a "
+             "file/PDF/image you upload (which we host), or an Odoo product's "
+             "live price page.")
     link_url = fields.Char(
         string='Link',
         help="Where the generated QR should take people (e.g. the advertiser's "
@@ -47,6 +51,28 @@ class AdBanner(models.Model):
         string='File / Document', attachment=True,
         help="A PDF, image or any document. We host it and the QR opens it.")
     qr_filename = fields.Char(string='File Name')
+    # Product target — the QR opens a live price page for this product.
+    product_id = fields.Many2one(
+        'product.template', string='Product', ondelete='set null',
+        help="When 'QR Points To' is Product, the QR opens a live price page for "
+             "this product (updates automatically when its price changes).")
+    compare_price = fields.Float(
+        string='Was Price (optional)',
+        help="Optional 'before' price shown struck-through with the % off on the "
+             "product page. Leave 0 to hide.")
+    cta_phone = fields.Char(
+        string='Contact Phone',
+        help="Shown as WhatsApp + Call buttons on the product page.")
+    # Media — an ad is an image (default) or an uploaded video clip.
+    media_type = fields.Selection(
+        [('image', 'Image'), ('video', 'Video')],
+        string='Media Type', default='image', required=True,
+        help="Image (default) or an uploaded video. The Ad Image is kept as the "
+             "poster/fallback either way.")
+    video = fields.Binary(
+        string='Video', attachment=True,
+        help="An uploaded video clip (e.g. MP4) played in the carousel.")
+    video_filename = fields.Char(string='Video File Name')
     access_code = fields.Char(
         string='Access Code', required=True, copy=False, index=True,
         default=lambda self: uuid.uuid4().hex,
@@ -119,7 +145,15 @@ class AdBanner(models.Model):
         self.ensure_one()
         return '%s/ad/file/%s' % (self.get_base_url(), self.access_code)
 
-    @api.depends('has_qr', 'qr_source', 'link_url', 'qr_file', 'access_code')
+    def _landing_url(self):
+        self.ensure_one()
+        return '%s/ad/p/%s' % (self.get_base_url(), self.access_code)
+
+    def _video_url(self):
+        self.ensure_one()
+        return '%s/ad/video/%s' % (self.get_base_url(), self.access_code)
+
+    @api.depends('has_qr', 'qr_source', 'link_url', 'qr_file', 'product_id', 'access_code')
     def _compute_qr_image(self):
         # Odoo's built-in barcode() (reportlab, already a dependency) returns raw
         # PNG bytes. We only generate a QR when the image has none of its own; it
@@ -132,6 +166,8 @@ class AdBanner(models.Model):
                     target = rec.link_url
                 elif rec.qr_source == 'file' and rec.qr_file and rec.access_code:
                     target = rec._file_url()
+                elif rec.qr_source == 'product' and rec.product_id and rec.access_code:
+                    target = rec._landing_url()
             if not target:
                 rec.qr_image = False
                 continue
@@ -176,7 +212,7 @@ class AdBanner(models.Model):
 
     # --- Validation ------------------------------------------------------------
 
-    @api.constrains('has_qr', 'qr_source', 'link_url', 'qr_file')
+    @api.constrains('has_qr', 'qr_source', 'link_url', 'qr_file', 'product_id')
     def _check_qr_target(self):
         for rec in self:
             if rec.has_qr:
@@ -195,12 +231,32 @@ class AdBanner(models.Model):
                 raise ValidationError(_(
                     "Upload a File / Document for “%s”, or switch the QR to a Link.",
                     rec.name or _('this ad')))
+            elif rec.qr_source == 'product' and not rec.product_id:
+                raise ValidationError(_(
+                    "Choose a Product for “%s”, or switch the QR to a Link or File.",
+                    rec.name or _('this ad')))
 
     @api.constrains('date_start', 'date_end')
     def _check_dates(self):
         for rec in self:
             if rec.date_start and rec.date_end and rec.date_end < rec.date_start:
                 raise ValidationError(_("End Date cannot be before Start Date."))
+
+    @api.constrains('media_type', 'video')
+    def _check_video(self):
+        for rec in self:
+            if rec.media_type == 'video' and not rec.video:
+                raise ValidationError(_(
+                    "Upload a Video for “%s”, or set Media Type back to Image.",
+                    rec.name or _('this ad')))
+
+    @api.constrains('media_type', 'image')
+    def _check_image(self):
+        for rec in self:
+            if rec.media_type == 'image' and not rec.image:
+                raise ValidationError(_(
+                    "Upload an Image for “%s” (Media Type is Image).",
+                    rec.name or _('this ad')))
 
     # --- Actions ---------------------------------------------------------------
 

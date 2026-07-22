@@ -1,13 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Colors } from '@/constants/theme';
+import { useAuth } from '@/context/auth';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TabLayout() {
   const scheme = useColorScheme() ?? 'light';
   const c = Colors[scheme];
+  const { canManage } = useAuth();
+  const insets = useSafeAreaInsets();
+  // Lift the tab bar above the phone's system navigation / gesture bar.
+  const bottomPad = insets.bottom > 0 ? insets.bottom : 10;
 
   return (
     <Tabs
@@ -18,31 +23,28 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: c.tabBar,
           borderTopColor: c.border,
-          height: Platform.OS === 'ios' ? 88 : 66,
+          height: 56 + bottomPad,
           paddingTop: 8,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 10,
+          paddingBottom: bottomPad,
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
+          title: 'Ads',
+          tabBarIcon: ({ color, size }) => <Ionicons name="albums" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="offers"
+        name="manage"
         options={{
-          title: 'Offers',
-          tabBarIcon: ({ color, size }) => <Ionicons name="pricetags" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="scan"
-        options={{
-          title: 'Scan',
-          tabBarIcon: ({ color, size }) => <Ionicons name="qr-code" size={size} color={color} />,
+          title: 'Manage',
+          // Admin-only: hidden from the bar for non-managers (href: null).
+          href: canManage ? undefined : null,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="create" size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen

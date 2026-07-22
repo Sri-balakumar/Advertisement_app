@@ -7,6 +7,7 @@ import 'react-native-reanimated';
 
 import { AnimatedSplash } from '@/components/animated-splash';
 import { AuthProvider, useAuth } from '@/context/auth';
+import { ThemePreferenceProvider } from '@/context/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export const unstable_settings = {
@@ -16,6 +17,14 @@ export const unstable_settings = {
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  return (
+    <ThemePreferenceProvider>
+      <ThemedRoot />
+    </ThemePreferenceProvider>
+  );
+}
+
+function ThemedRoot() {
   const colorScheme = useColorScheme();
 
   return (
@@ -23,7 +32,7 @@ export default function RootLayout() {
       <AuthProvider>
         <RootNavigator />
       </AuthProvider>
-      <StatusBar style="auto" />
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>
   );
 }
@@ -59,7 +68,12 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
         <Stack.Screen name="login" options={{ animation: 'fade' }} />
-        <Stack.Screen name="product/[id]" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="ad-form" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="address" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="support" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="about" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="insights" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="enquiries" options={{ animation: 'slide_from_right' }} />
       </Stack>
       {!ready && <AnimatedSplash onDone={() => setSplashDone(true)} />}
     </>

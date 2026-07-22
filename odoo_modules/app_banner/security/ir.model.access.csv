@@ -1,9 +1,0 @@
-id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_app_banner_user,app.banner.user,model_app_banner,base.group_user,1,0,0,0
-access_app_banner_manager,app.banner.manager,model_app_banner,base.group_system,1,1,1,1
-access_app_banner_scan_user,app.banner.scan.user,model_app_banner_scan,base.group_user,1,0,0,0
-access_app_banner_scan_manager,app.banner.scan.manager,model_app_banner_scan,base.group_system,1,1,1,1
-access_app_banner_image_user,app.banner.image.user,model_app_banner_image,base.group_user,1,0,0,0
-access_app_banner_image_manager,app.banner.image.manager,model_app_banner_image,base.group_system,1,1,1,1
-access_app_banner_enquiry_user,app.banner.enquiry.user,model_app_banner_enquiry,base.group_user,1,0,0,0
-access_app_banner_enquiry_manager,app.banner.enquiry.manager,model_app_banner_enquiry,base.group_system,1,1,1,1
