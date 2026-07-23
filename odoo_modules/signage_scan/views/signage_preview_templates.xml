@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Phone-frame live preview of the banner display (self-contained; no
+         web.frontend_layout, which crashes in this build). -->
+    <template id="signage_preview_page" name="Signage Live Preview">
+        <html lang="en">
+            <head>
+                <meta charset="utf-8"/>
+                <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                <title>Signage — Live Preview</title>
+                <style>
+                    * { box-sizing: border-box; margin: 0; padding: 0; }
+                    body { background: #0f1220; min-height: 100vh; display: flex; flex-direction: column;
+                           align-items: center; justify-content: center; gap: 16px; padding: 24px;
+                           font-family: -apple-system, "Segoe UI", Roboto, sans-serif; color: #cbd5e1; }
+                    h1 { font-size: 1rem; font-weight: 700; color: #e2e8f0; }
+                    .phone { position: relative; width: 300px; aspect-ratio: 9 / 19.5; background: #000;
+                             border-radius: 40px; padding: 10px; box-shadow: 0 30px 60px rgba(0,0,0,.5);
+                             border: 2px solid #23283a; }
+                    .screen { position: relative; width: 100%; height: 100%; border-radius: 32px;
+                              overflow: hidden; background: #0b0b12; }
+                    .slide { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; }
+                    .slide.active { display: flex; }
+                    .slide img, .slide video { width: 100%; height: 100%; object-fit: contain; }
+                    .dots { position: absolute; top: 12px; left: 0; right: 0; display: flex; gap: 5px;
+                            justify-content: center; z-index: 4; pointer-events: none; }
+                    .dot { width: 6px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.4); }
+                    .dot.on { width: 18px; background: #fff; }
+                    .scan { position: absolute; bottom: 18px; left: 0; right: 0; display: flex;
+                            justify-content: center; z-index: 4; pointer-events: none; }
+                    .scan span { background: #4f46e5; color: #fff; font-weight: 800; font-size: .78rem;
+                                 padding: 9px 20px; border-radius: 999px; opacity: .92; }
+                    .zone { position: absolute; top: 0; bottom: 0; z-index: 5; display: flex;
+                            align-items: center; cursor: pointer; }
+                    .zone.left { left: 0; width: 33%; justify-content: flex-start; padding-left: 8px; }
+                    .zone.center { left: 33%; width: 34%; justify-content: center; }
+                    .zone.right { right: 0; width: 33%; justify-content: flex-end; padding-right: 8px; }
+                    .ctrl { opacity: 0; transition: opacity .15s ease; width: 46px; height: 46px;
+                            border-radius: 999px; background: rgba(0,0,0,.55); display: flex;
+                            align-items: center; justify-content: center; }
+                    .zone:hover .ctrl { opacity: 1; }
+                    .ctrl svg { width: 24px; height: 24px; }
+                    .empty { position: absolute; inset: 0; display: flex; align-items: center;
+                             justify-content: center; color: #64748b; text-align: center; padding: 24px; font-size: .85rem; }
+                    .note { font-size: .8rem; color: #64748b; }
+                </style>
+            </head>
+            <body>
+                <h1>Live Preview — what the app shows</h1>
+                <div class="phone">
+                    <div class="screen" id="screen">
+                        <div class="dots" id="dots"></div>
+                        <div class="scan"><span>Scan a product</span></div>
+                        <div class="zone left" id="zPrev">
+                            <div class="ctrl">
+                                <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </div>
+                        </div>
+                        <div class="zone center" id="zPause">
+                            <div class="ctrl">
+                                <svg class="ic-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="#fff"/><rect x="14" y="5" width="4" height="14" rx="1" fill="#fff"/></svg>
+                                <svg class="ic-play" viewBox="0 0 24 24" style="display:none"><path d="M8 5v14l11-7z" fill="#fff"/></svg>
+                            </div>
+                        </div>
+                        <div class="zone right" id="zNext">
+                            <div class="ctrl">
+                                <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="note"><t t-esc="count"/> live banner(s) · updates when you edit banners</div>
+
+                <script t-att-data-banners="banners_json">
+                    (function () {
+                        var self = document.currentScript;
+                        var banners = JSON.parse(self.getAttribute('data-banners') || '[]');
+                        var screen = document.getElementById('screen');
+                        var dots = document.getElementById('dots');
+                        var zPrev = document.getElementById('zPrev');
+                        var zNext = document.getElementById('zNext');
+                        var zPause = document.getElementById('zPause');
+                        var pauseIc = document.querySelector('.ic-pause');
+                        var playIc = document.querySelector('.ic-play');
+                        if (!banners.length) {
+                            var e = document.createElement('div');
+                            e.className = 'empty';
+                            e.textContent = 'No live banners yet. Add one under Banners.';
+                            screen.appendChild(e);
+                            zPrev.style.display = 'none'; zNext.style.display = 'none'; zPause.style.display = 'none';
+                            return;
+                        }
+                        var slides = [];
+                        banners.forEach(function (b, i) {
+                            var s = document.createElement('div');
+                            s.className = 'slide' + (i === 0 ? ' active' : '');
+                            if (b.media_type === 'video' &amp;&amp; b.video) {
+                                var v = document.createElement('video');
+                                v.src = b.video; v.muted = true; v.playsInline = true;
+                                var isAuto = !Number(b.scroll_seconds);
+                                v.loop = !isAuto;
+                                if (isAuto) {
+                                    v.addEventListener('ended', function () {
+                                        if (!paused) go(1);
+                                    });
+                                }
+                                s.appendChild(v);
+                            } else if (b.image) {
+                                var img = document.createElement('img');
+                                img.src = b.image;
+                                s.appendChild(img);
+                            }
+                            screen.insertBefore(s, screen.firstChild);
+                            slides.push({ el: s, b: b });
+                            var d = document.createElement('div');
+                            d.className = 'dot' + (i === 0 ? ' on' : '');
+                            dots.appendChild(d);
+                        });
+                        var idx = 0, paused = false, timer = null;
+                        function show(i) {
+                            slides.forEach(function (sl, j) {
+                                sl.el.classList.toggle('active', j === i);
+                                dots.children[j].classList.toggle('on', j === i);
+                                var v = sl.el.querySelector('video');
+                                if (v) { if (j === i &amp;&amp; !paused) { try { v.currentTime = 0; } catch (e) {} v.play().catch(function () {}); } else { v.pause(); } }
+                            });
+                        }
+                        function schedule() {
+                            clearTimeout(timer);
+                            if (paused || slides.length === 1) return;
+                            var cur = slides[idx].b;
+                            // Video on Auto advances when it ends (see 'ended' listener), not on a timer.
+                            if (cur.media_type === 'video' &amp;&amp; !Number(cur.scroll_seconds)) return;
+                            var secs = Number(cur.scroll_seconds) || 6;
+                            timer = setTimeout(function () { go(1); }, Math.max(2, secs) * 1000);
+                        }
+                        function go(dir) {
+                            idx = (idx + dir + slides.length) % slides.length;
+                            show(idx);
+                            schedule();
+                        }
+                        zPrev.addEventListener('click', function () { go(-1); });
+                        zNext.addEventListener('click', function () { go(1); });
+                        zPause.addEventListener('click', function () {
+                            paused = !paused;
+                            pauseIc.style.display = paused ? 'none' : '';
+                            playIc.style.display = paused ? '' : 'none';
+                            if (paused) {
+                                clearTimeout(timer);
+                                var v = slides[idx].el.querySelector('video');
+                                if (v) v.pause();
+                            } else {
+                                show(idx);
+                                schedule();
+                            }
+                        });
+                        show(0);
+                        schedule();
+                    })();
+                </script>
+            </body>
+        </html>
+    </template>
+
+</odoo>

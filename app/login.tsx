@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { ComponentProps, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -16,9 +17,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GradientButton } from '@/components/gradient-button';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Brand, Colors, Radius, Shadow } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
+import { useThemePreference } from '@/context/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { authenticate, listDatabases } from '@/services/odoo';
 
 export default function LoginScreen() {
@@ -26,11 +28,14 @@ export default function LoginScreen() {
   const c = Colors[scheme];
   const router = useRouter();
   const { signIn } = useAuth();
+  const { setPref } = useThemePreference();
+  const toggleTheme = () => setPref(scheme === 'dark' ? 'light' : 'dark');
 
   const [baseUrl, setBaseUrl] = useState('');
   const [db, setDb] = useState('');
   const [dbs, setDbs] = useState<string[]>([]);
   const [dbLoading, setDbLoading] = useState(false);
+  const [dbError, setDbError] = useState('');
   const [dbModalVisible, setDbModalVisible] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -38,26 +43,42 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Debounced database discovery as the user types the server URL.
+  // Debounced database discovery as the user types the server URL. A `cancelled`
+  // flag makes sure a superseded (slow, out-of-order) response can't overwrite a
+  // newer result and hide the dropdown — the "sometimes not showing" bug.
   useEffect(() => {
     const u = baseUrl.trim();
     if (u.length < 4) {
       setDbs([]);
+      setDbError('');
+      setDbLoading(false);
       return;
     }
+    let cancelled = false;
     setDbLoading(true);
+    setDbError('');
     const t = setTimeout(async () => {
       try {
         const list = await listDatabases(u);
+        if (cancelled) return;
         setDbs(list);
-        if (list.length === 1) setDb(list[0]);
-      } catch {
+        if (list.length === 0) {
+          setDbError('No databases found on this server. Check the URL.');
+        } else if (list.length === 1) {
+          setDb(list[0]);
+        }
+      } catch (e: any) {
+        if (cancelled) return;
         setDbs([]);
+        setDbError(e?.message || 'Cannot reach the server. Check the URL and your network.');
       } finally {
-        setDbLoading(false);
+        if (!cancelled) setDbLoading(false);
       }
     }, 700);
-    return () => clearTimeout(t);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [baseUrl]);
 
   const onSubmit = async () => {
@@ -78,110 +99,137 @@ export default function LoginScreen() {
     }
   };
 
+  const inputBg = scheme === 'dark' ? '#0f0f18' : '#f4f5f7';
+
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ flexGrow: 1 }}>
-          {/* Gradient header */}
-          <LinearGradient colors={Brand.splash} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
-            <SafeAreaView edges={['top']}>
-              <View style={styles.brandBadge}>
-                <Text style={styles.brandBadgeText}>369</Text>
-              </View>
-              <Text style={styles.h1}>Welcome back</Text>
-              <Text style={styles.h2}>Sign in to your Odoo account</Text>
-            </SafeAreaView>
-          </LinearGradient>
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
+          {/* Top row: theme toggle */}
+          <View style={styles.topRow}>
+            <Pressable
+              onPress={toggleTheme}
+              hitSlop={8}
+              style={[styles.themeToggle, { backgroundColor: c.card, borderColor: c.border }]}
+              accessibilityRole="button"
+              accessibilityLabel={scheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+              <Ionicons name={scheme === 'dark' ? 'sunny-outline' : 'moon-outline'} size={20} color={c.tint} />
+            </Pressable>
+          </View>
 
-          {/* Card */}
-          <View style={[styles.card, Shadow.card, { backgroundColor: c.card }]}>
-            <Field
-              c={c}
-              icon="server-outline"
-              label="Server URL"
-              value={baseUrl}
-              onChangeText={setBaseUrl}
-              placeholder="https://your-server.com"
-              keyboardType="url"
-              autoCapitalize="none"
-            />
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scroll}>
+            {/* Brand mark — logo on a white chip so it reads in both themes */}
+            <View style={[styles.logoChip, Shadow.card]}>
+              <Image
+                source={require('../assets/images/logo-369-ad.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            </View>
 
-            {/* Database: scrollable dropdown when the server lists DBs, else manual entry */}
-            {dbs.length > 0 ? (
-              <View style={{ marginTop: 14 }}>
-                <Text style={[styles.label, { color: c.textMuted }]}>Database</Text>
-                <Pressable
-                  onPress={() => setDbModalVisible(true)}
-                  style={[styles.inputRow, { backgroundColor: c.background, borderColor: c.border }]}>
-                  <Ionicons name="server" size={18} color={c.textMuted} />
-                  <Text
-                    style={[styles.input, { color: db ? c.text : c.textMuted }]}
-                    numberOfLines={1}>
-                    {db || 'Select a database'}
-                  </Text>
-                  <View style={styles.dbCount}>
-                    <Text style={styles.dbCountText}>{dbs.length}</Text>
-                  </View>
-                  <Ionicons name="chevron-down" size={18} color={c.textMuted} />
-                </Pressable>
-              </View>
-            ) : (
+            <Text style={[styles.h1, { color: c.text }]}>Welcome back</Text>
+            <Text style={[styles.h2, { color: c.textMuted }]}>Sign in to your Odoo account</Text>
+
+            {/* Card */}
+            <View style={[styles.card, Shadow.soft, { backgroundColor: c.card, borderColor: c.border }]}>
               <Field
                 c={c}
-                icon="server"
-                label="Database"
-                value={db}
-                onChangeText={setDb}
-                placeholder={dbLoading ? 'Loading databases…' : 'Database name'}
+                inputBg={inputBg}
+                icon="server-outline"
+                label="Server URL"
+                value={baseUrl}
+                onChangeText={setBaseUrl}
+                placeholder="https://your-server.com"
+                keyboardType="url"
                 autoCapitalize="none"
               />
-            )}
 
-            <Field
-              c={c}
-              icon="person-outline"
-              label="Username or Email"
-              value={username}
-              onChangeText={setUsername}
-              placeholder="you@example.com"
-              autoCapitalize="none"
-            />
+              {/* Database: dropdown when the server lists DBs, else manual entry */}
+              {dbs.length > 0 ? (
+                <View style={{ marginTop: 14 }}>
+                  <Text style={[styles.label, { color: c.textMuted }]}>Database</Text>
+                  <Pressable
+                    onPress={() => setDbModalVisible(true)}
+                    style={[styles.inputRow, { backgroundColor: inputBg, borderColor: c.border }]}>
+                    <Ionicons name="server" size={18} color={c.textMuted} />
+                    <Text style={[styles.input, { color: db ? c.text : c.textMuted }]} numberOfLines={1}>
+                      {db || 'Select a database'}
+                    </Text>
+                    <View style={[styles.dbCount, { backgroundColor: scheme === 'dark' ? 'rgba(155,140,255,0.2)' : 'rgba(79,70,229,0.12)' }]}>
+                      <Text style={[styles.dbCountText, { color: c.tint }]}>{dbs.length}</Text>
+                    </View>
+                    <Ionicons name="chevron-down" size={18} color={c.textMuted} />
+                  </Pressable>
+                </View>
+              ) : (
+                <Field
+                  c={c}
+                  inputBg={inputBg}
+                  icon="server"
+                  label="Database"
+                  value={db}
+                  onChangeText={setDb}
+                  placeholder={dbLoading ? 'Loading databases…' : 'Database name'}
+                  autoCapitalize="none"
+                  loading={dbLoading}
+                />
+              )}
 
-            <Field
-              c={c}
-              icon="lock-closed-outline"
-              label="Password"
-              value={password}
-              onChangeText={setPassword}
-              placeholder="••••••••"
-              secureTextEntry={!showPw}
-              rightIcon={showPw ? 'eye-off-outline' : 'eye-outline'}
-              onRightIconPress={() => setShowPw((s) => !s)}
-            />
+              {dbError && !dbLoading ? (
+                <View style={styles.dbErrorRow}>
+                  <Ionicons name="alert-circle" size={14} color={Brand.rose} />
+                  <Text style={styles.dbErrorText}>{dbError}</Text>
+                </View>
+              ) : null}
 
-            {error ? (
-              <View style={styles.errorBox}>
-                <Ionicons name="alert-circle" size={16} color={Brand.rose} />
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            ) : null}
+              <Field
+                c={c}
+                inputBg={inputBg}
+                icon="person-outline"
+                label="Username or Email"
+                value={username}
+                onChangeText={setUsername}
+                placeholder="you@example.com"
+                autoCapitalize="none"
+              />
 
-            <GradientButton
-              label={loading ? 'Signing in…' : 'Sign in'}
-              icon="log-in-outline"
-              loading={loading}
-              onPress={onSubmit}
-              style={{ marginTop: 18 }}
-            />
+              <Field
+                c={c}
+                inputBg={inputBg}
+                icon="lock-closed-outline"
+                label="Password"
+                value={password}
+                onChangeText={setPassword}
+                placeholder="••••••••"
+                secureTextEntry={!showPw}
+                rightIcon={showPw ? 'eye-off-outline' : 'eye-outline'}
+                onRightIconPress={() => setShowPw((s) => !s)}
+              />
+
+              {error ? (
+                <View style={styles.errorBox}>
+                  <Ionicons name="alert-circle" size={16} color={Brand.rose} />
+                  <Text style={[styles.errorText, { color: Brand.rose }]}>{error}</Text>
+                </View>
+              ) : null}
+
+              <GradientButton
+                label={loading ? 'Signing in…' : 'Sign in'}
+                icon="log-in-outline"
+                loading={loading}
+                onPress={onSubmit}
+                style={{ marginTop: 20 }}
+              />
+            </View>
 
             <Text style={[styles.powered, { color: c.textMuted }]}>Powered by 369ai · v1.0.0</Text>
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </SafeAreaView>
       </KeyboardAvoidingView>
 
       {/* Scrollable database picker */}
@@ -232,30 +280,50 @@ export default function LoginScreen() {
 
 function Field({
   c,
+  inputBg,
   icon,
   label,
   rightIcon,
   onRightIconPress,
+  loading,
   ...input
 }: {
   c: (typeof Colors)['light'];
+  inputBg: string;
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   rightIcon?: keyof typeof Ionicons.glyphMap;
   onRightIconPress?: () => void;
+  loading?: boolean;
 } & ComponentProps<typeof TextInput>) {
+  const [focused, setFocused] = useState(false);
   return (
     <View style={{ marginTop: 14 }}>
       <Text style={[styles.label, { color: c.textMuted }]}>{label}</Text>
-      <View style={[styles.inputRow, { backgroundColor: c.background, borderColor: c.border }]}>
-        <Ionicons name={icon} size={18} color={c.textMuted} />
+      <View
+        style={[
+          styles.inputRow,
+          { backgroundColor: inputBg, borderColor: focused ? c.tint : c.border },
+          focused && { borderWidth: 1.5 },
+        ]}>
+        <Ionicons name={icon} size={18} color={focused ? c.tint : c.textMuted} />
         <TextInput
           placeholderTextColor={c.textMuted}
           style={[styles.input, { color: c.text }]}
           autoCorrect={false}
           {...input}
+          onFocus={(e) => {
+            setFocused(true);
+            input.onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            input.onBlur?.(e);
+          }}
         />
-        {rightIcon ? (
+        {loading ? (
+          <ActivityIndicator size="small" color={c.tint} />
+        ) : rightIcon ? (
           <Pressable onPress={onRightIconPress} hitSlop={8}>
             <Ionicons name={rightIcon} size={18} color={c.textMuted} />
           </Pressable>
@@ -266,31 +334,42 @@ function Field({
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 20,
+    paddingTop: 6,
   },
-  brandBadge: {
-    width: 66,
-    height: 66,
+  themeToggle: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 16,
   },
-  brandBadgeText: { color: '#fff', fontSize: 26, fontWeight: '900' },
-  h1: { color: '#fff', fontSize: 26, fontWeight: '900', marginTop: 18 },
-  h2: { color: 'rgba(255,255,255,0.85)', fontSize: 14, marginTop: 4 },
+  scroll: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  logoChip: {
+    alignSelf: 'center',
+    backgroundColor: '#fff',
+    borderRadius: Radius.lg,
+    paddingHorizontal: 22,
+    paddingVertical: 16,
+    marginBottom: 26,
+  },
+  logo: { width: 210, height: 96 },
+  h1: { fontSize: 28, fontWeight: '900', textAlign: 'center', letterSpacing: 0.2 },
+  h2: { fontSize: 14, textAlign: 'center', marginTop: 6 },
   card: {
-    marginHorizontal: 18,
-    marginTop: -22,
+    marginTop: 26,
     borderRadius: Radius.xl,
     padding: 20,
+    borderWidth: 1,
   },
   label: { fontSize: 12, fontWeight: '700', marginBottom: 6, letterSpacing: 0.2 },
   inputRow: {
@@ -303,8 +382,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   input: { flex: 1, fontSize: 15 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -314,15 +391,16 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: Radius.sm,
   },
-  errorText: { color: '#e11d48', fontSize: 13, flex: 1 },
-  powered: { textAlign: 'center', fontSize: 12, marginTop: 18 },
+  errorText: { fontSize: 13, flex: 1 },
+  powered: { textAlign: 'center', fontSize: 12, marginTop: 22 },
   dbCount: {
-    backgroundColor: 'rgba(79,70,229,0.12)',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 999,
   },
-  dbCountText: { fontSize: 11, fontWeight: '800', color: '#4f46e5' },
+  dbCountText: { fontSize: 11, fontWeight: '800' },
+  dbErrorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, marginLeft: 2 },
+  dbErrorText: { color: Brand.rose, fontSize: 12.5, flex: 1, fontWeight: '600' },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -342,4 +420,3 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
 });
-

@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="signage_banner_form" model="ir.ui.view">
+        <field name="name">signage.banner.form</field>
+        <field name="model">signage.banner</field>
+        <field name="arch" type="xml">
+            <form string="Banner">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="media_type" widget="radio"/>
+                        <field name="image" widget="image" invisible="media_type != 'image'"/>
+                        <field name="video" filename="video_filename" invisible="media_type != 'video'"/>
+                        <field name="video_filename" invisible="1"/>
+                        <field name="video_preview" widget="html" readonly="1" nolabel="1"
+                               invisible="media_type != 'video' or not video"/>
+                    </group>
+                    <div class="alert alert-warning mb-0" role="alert"
+                         invisible="media_type != 'video' or duration_mode != 'custom'">
+                        <i class="fa fa-warning me-1"/>
+                        For a video, use <b>Auto</b> — with <b>Custom</b> the video is cut off at the
+                        seconds set below and won't finish playing.
+                    </div>
+                    <group string="Timing &amp; schedule">
+                        <field name="duration_mode"/>
+                        <field name="scroll_seconds" invisible="duration_mode != 'custom'"/>
+                        <field name="sequence"/>
+                        <field name="show_on_display" widget="boolean_toggle"/>
+                        <field name="active"/>
+                        <field name="date_start"/>
+                        <field name="date_end"/>
+                        <field name="is_live"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Card (kanban) view — banners shown as cards with their artwork.
+         Uses the image widget (not the removed kanban_image helper). -->
+    <record id="signage_banner_kanban" model="ir.ui.view">
+        <field name="name">signage.banner.kanban</field>
+        <field name="model">signage.banner</field>
+        <field name="arch" type="xml">
+            <kanban>
+                <field name="is_live"/>
+                <field name="active"/>
+                <field name="show_on_display"/>
+                <field name="media_type"/>
+                <templates>
+                    <t t-name="card">
+                        <div class="text-center mb-1">
+                            <video t-if="record.media_type.raw_value === 'video'"
+                                   controls="controls" muted="muted" preload="metadata"
+                                   style="width:100%;max-height:150px;background:#000;border-radius:6px;"
+                                   t-att-src="'/signage/video_admin/' + record.id.raw_value"></video>
+                            <field t-if="record.media_type.raw_value !== 'video'"
+                                   name="image" widget="image" options="{'size': [180, 120]}"/>
+                        </div>
+                        <field name="name" class="fw-bold fs-6"/>
+                        <div class="mt-1">
+                            <span class="badge text-bg-primary me-1" style="text-transform:capitalize;">
+                                <field name="media_type"/>
+                            </span>
+                            <span t-if="record.is_live.raw_value" class="badge text-bg-success">Live</span>
+                            <span t-if="record.active.raw_value and !record.show_on_display.raw_value" class="badge text-bg-warning ms-1">Off</span>
+                            <span t-if="!record.active.raw_value" class="badge text-bg-secondary ms-1">Archived</span>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <record id="signage_banner_list" model="ir.ui.view">
+        <field name="name">signage.banner.list</field>
+        <field name="model">signage.banner</field>
+        <field name="arch" type="xml">
+            <list string="Banners">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="media_type"/>
+                <field name="is_live"/>
+                <field name="show_on_display" widget="boolean_toggle"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="signage_banner_action" model="ir.actions.act_window">
+        <field name="name">Banners</field>
+        <field name="res_model">signage.banner</field>
+        <field name="view_mode">kanban,list,form</field>
+    </record>
+
+    <menuitem id="signage_menu_root" name="Signage Scan"
+              action="signage_banner_action" sequence="102"/>
+
+    <record id="signage_preview_action" model="ir.actions.act_url">
+        <field name="name">Live Preview</field>
+        <field name="url">/signage/preview</field>
+        <field name="target">new</field>
+    </record>
+    <menuitem id="signage_preview_menu" name="Live Preview"
+              parent="signage_menu_root"
+              action="signage_preview_action" sequence="15"/>
+
+</odoo>

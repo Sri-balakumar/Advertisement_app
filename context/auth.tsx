@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 
-import { canManageAds, OdooUser } from '@/services/odoo';
+import { OdooUser, signageCanManage } from '@/services/odoo';
 
 type AuthContextValue = {
   user: OdooUser | null;
@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let alive = true;
     if (user?.base_url) {
-      canManageAds(user.base_url).then((v) => {
+      signageCanManage(user.base_url).then((v) => {
         if (alive) setCanManage(v);
       });
     } else {

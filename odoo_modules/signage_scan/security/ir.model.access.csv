@@ -1,0 +1,9 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_signage_banner_user,signage.banner.user,model_signage_banner,base.group_user,1,0,0,0
+access_signage_banner_manager,signage.banner.manager,model_signage_banner,base.group_system,1,1,1,1
+access_signage_product_field_user,signage.product.field.user,model_signage_product_field,base.group_user,1,0,0,0
+access_signage_product_field_manager,signage.product.field.manager,model_signage_product_field,base.group_system,1,1,1,1
+access_signage_config_user,signage.config.user,model_signage_config,base.group_user,1,0,0,0
+access_signage_config_manager,signage.config.manager,model_signage_config,base.group_system,1,1,1,1
+access_signage_config_field_user,signage.config.field.user,model_signage_config_field,base.group_user,1,0,0,0
+access_signage_config_field_manager,signage.config.field.manager,model_signage_config_field,base.group_system,1,1,1,1

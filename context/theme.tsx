@@ -24,7 +24,9 @@ const STORAGE_KEY = 'theme_pref';
  */
 export function ThemePreferenceProvider({ children }: { children: ReactNode }) {
   const system = useSystemColorScheme();
-  const [pref, setPrefState] = useState<ThemePref>('system');
+  // Default to light: the app opens light-first even on dark phones; a user can
+  // switch to dark (or 'system') and that choice is persisted below.
+  const [pref, setPrefState] = useState<ThemePref>('light');
 
   useEffect(() => {
     (async () => {
@@ -32,7 +34,7 @@ export function ThemePreferenceProvider({ children }: { children: ReactNode }) {
         const v = await AsyncStorage.getItem(STORAGE_KEY);
         if (v === 'light' || v === 'dark' || v === 'system') setPrefState(v);
       } catch {
-        // ignore — default to following the system
+        // ignore — keep the light default
       }
     })();
   }, []);

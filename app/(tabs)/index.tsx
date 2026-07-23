@@ -1,147 +1,461 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Linking from 'expo-linking';
+import { useIsFocused } from '@react-navigation/native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { File, Paths } from 'expo-file-system';
 import { useFocusEffect } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Animated,
+  AppState,
   Dimensions,
+  Easing,
   FlatList,
   Image,
+  Linking,
+  Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Brand } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
-import { AdItem, fetchCarousel } from '@/services/odoo';
+import { useTabBar } from '@/context/tabbar';
+import { getSignageBanners, lookupProduct, ProductLookup, SignageBanner } from '@/services/odoo';
+import { getScanMode, ScanMode } from '@/services/scanSettings';
 
 const W = Dimensions.get('window').width;
-const DEFAULT_SECONDS = 4;
+const DEFAULT_SECONDS = 6;
+const CONTROLS_HIDE_MS = 3500;
 
-/**
- * Rewrite an Odoo URL (/ad/video, /ad/p …) to the host the app logged into,
- * so it stays reachable even if the server's base URL is localhost. External
- * links (a full different origin) are left untouched via the path check.
- */
+/** Rewrite an Odoo path (/signage/video …) onto the host the app logged into. */
 function toReachable(url: string | false, base: string): string | false {
   if (!url || !base) return url;
   const path = url.replace(/^https?:\/\/[^/]+/i, '');
   return path.startsWith('/') ? base.replace(/\/+$/, '') + path : url;
 }
 
-/** One video slide (expo-video). Plays only while it is the active slide. */
-function VideoSlide({ uri, active }: { uri: string; active: boolean }) {
+// Banner videos downloaded once per session (multi-DB safe — see fetchLocalVideo).
+const videoCache = new Map<number, string>();
+
+async function fetchLocalVideo(id: number, url: string): Promise<string> {
+  const cached = videoCache.get(id);
+  if (cached) return cached;
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  const file = new File(Paths.cache, `signage-video-${id}.mp4`);
+  if (file.exists) file.delete();
+  file.write(bytes);
+  videoCache.set(id, file.uri);
+  return file.uri;
+}
+
+function LocalVideo({
+  uri,
+  active,
+  loop = true,
+  onEnded,
+}: {
+  uri: string;
+  active: boolean;
+  loop?: boolean;
+  onEnded?: () => void;
+}) {
   const player = useVideoPlayer(uri, (p) => {
-    p.loop = true;
+    p.loop = loop;
     p.muted = true;
   });
+  useEffect(() => {
+    player.loop = loop;
+  }, [loop, player]);
   useEffect(() => {
     if (active) player.play();
     else player.pause();
   }, [active, player]);
-  return (
-    <VideoView
-      player={player}
-      style={styles.image}
-      contentFit="contain"
-      nativeControls={false}
-      allowsFullscreen={false}
-      allowsPictureInPicture={false}
-    />
-  );
+  // Advance the carousel when this video finishes (Auto timing).
+  useEffect(() => {
+    if (!onEnded) return;
+    const sub = player.addListener('playToEnd', onEnded);
+    return () => sub.remove();
+  }, [player, onEnded]);
+  return <VideoView player={player} style={styles.image} contentFit="contain" nativeControls={false} />;
 }
 
-export default function CarouselScreen() {
+function BannerVideo({
+  id,
+  uri,
+  active,
+  loop = true,
+  onEnded,
+}: {
+  id: number;
+  uri: string;
+  active: boolean;
+  loop?: boolean;
+  onEnded?: () => void;
+}) {
+  const [localUri, setLocalUri] = useState<string | null>(() => videoCache.get(id) ?? null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (localUri) return;
+    let alive = true;
+    fetchLocalVideo(id, uri)
+      .then((u) => alive && setLocalUri(u))
+      .catch(() => alive && setFailed(true));
+    return () => {
+      alive = false;
+    };
+  }, [id, uri, localUri]);
+  if (failed) {
+    return (
+      <View style={[styles.image, styles.center]}>
+        <Ionicons name="videocam-off-outline" size={54} color="#4b4b57" />
+      </View>
+    );
+  }
+  if (!localUri) {
+    return (
+      <View style={[styles.image, styles.center]}>
+        <ActivityIndicator color="#fff" />
+      </View>
+    );
+  }
+  return <LocalVideo uri={localUri} active={active} loop={loop} onEnded={onEnded} />;
+}
+
+const BARCODE_TYPES = [
+  'ean13',
+  'ean8',
+  'upc_a',
+  'upc_e',
+  'code128',
+  'code39',
+  'code93',
+  'itf14',
+  'codabar',
+  'qr',
+] as const;
+
+export default function SignageScreen() {
   const { user } = useAuth();
-  const [ads, setAds] = useState<AdItem[]>([]);
+  const base = user?.base_url || '';
+  const isFocused = useIsFocused();
+  const { setHidden } = useTabBar();
+  const insets = useSafeAreaInsets();
+  // Sit above the floating tab bar (bottom inset + bar height + gap).
+  const barLift = (insets.bottom > 0 ? insets.bottom : 10) + 62 + 14;
+
+  const [banners, setBanners] = useState<SignageBanner[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState('');
   const [index, setIndex] = useState(0);
-  const [paused, setPaused] = useState(false);
   const [slideH, setSlideH] = useState(0);
-  const listRef = useRef<FlatList<AdItem>>(null);
+  const listRef = useRef<FlatList<SignageBanner>>(null);
 
-  const load = useCallback(
-    async (isRefresh = false) => {
-      if (!user?.base_url) {
-        setLoading(false);
-        return;
-      }
-      if (isRefresh) setRefreshing(true);
-      setError('');
-      try {
-        const list = await fetchCarousel(user.base_url);
-        setAds(list);
-        setIndex(0);
-        listRef.current?.scrollToOffset({ offset: 0, animated: false });
-      } catch (e: any) {
-        setError(e?.message || 'Could not load ads.');
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [user?.base_url],
-  );
+  const [result, setResult] = useState<ProductLookup | null>(null);
+  const [notFound, setNotFound] = useState('');
+  const [looking, setLooking] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
 
-  // Reload when the tab gains focus (so a just-added ad appears immediately).
+  // Scan mode (device-local); detail display time comes from the server per lookup.
+  const [scanMode, setScanMode] = useState<ScanMode>('auto');
+  const [appActive, setAppActive] = useState(true);
+  // Auto mode: once a USB scan is seen this visit, a scanner is present → the
+  // camera fallback turns off to save battery.
+  const [usbActive, setUsbActive] = useState(false);
+
+  const usbRef = useRef<TextInput>(null);
+  const [usbValue, setUsbValue] = useState('');
+  const lastScan = useRef<{ code: string; t: number }>({ code: '', t: 0 });
+
+  // Banner player controls (tap to reveal, auto-hide, pause).
+  const [paused, setPaused] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const uiOpacity = useRef(new Animated.Value(0)).current;
+  const pop = useRef(new Animated.Value(0)).current;
+  const spin = useRef(new Animated.Value(0)).current;
+  const [camModal, setCamModal] = useState(false);
+
+  const scanBusy = !!result || !!notFound || looking;
+  const usbEnabled = scanMode === 'usb' || scanMode === 'auto';
+  const wantCamera = scanMode === 'camera' || (scanMode === 'auto' && !usbActive);
+  const cameraLive = wantCamera && isFocused && appActive && !!permission?.granted;
+
+  const load = useCallback(async () => {
+    if (!base) {
+      setLoading(false);
+      return;
+    }
+    try {
+      setBanners(await getSignageBanners(base));
+      setIndex(0);
+      listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    } catch {
+      // ignore — empty state / refresh
+    } finally {
+      setLoading(false);
+    }
+  }, [base]);
+
+  // On focus: reload banners + the latest scan settings from Profile.
   useFocusEffect(
     useCallback(() => {
+      let alive = true;
       load();
+      getScanMode().then((m) => alive && setScanMode(m));
+      setUsbActive(false); // re-detect USB vs camera each visit (Auto mode)
+      return () => {
+        alive = false;
+      };
     }, [load]),
   );
 
-  // Auto-advance using each ad's own duration (or the app default), looping.
-  // Skipped while paused; any manual move resets the timer (index changes).
+  // Pause the camera when the app goes to the background (battery).
   useEffect(() => {
-    if (paused || ads.length < 2 || slideH === 0) return;
-    const secs = Number(ads[index]?.scroll_seconds) || DEFAULT_SECONDS;
-    const t = setTimeout(() => {
-      const next = (index + 1) % ads.length;
-      listRef.current?.scrollToOffset({ offset: next * W, animated: true });
-      setIndex(next);
-    }, Math.max(2, secs) * 1000);
-    return () => clearTimeout(t);
-  }, [index, ads, slideH, paused]);
+    const sub = AppState.addEventListener('change', (s) => setAppActive(s === 'active'));
+    return () => sub.remove();
+  }, []);
 
-  const onMomentumEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) =>
-    setIndex(Math.round(e.nativeEvent.contentOffset.x / W));
+  // Ask for camera permission for Camera mode, and for Auto (camera fallback).
+  useEffect(() => {
+    if ((scanMode !== 'camera' && scanMode !== 'auto') || permission?.granted) return;
+    (async () => {
+      const res = await requestPermission();
+      // Only nag with the Settings shortcut when Camera was explicitly chosen.
+      if (scanMode === 'camera' && !res.granted && res.canAskAgain === false) {
+        Alert.alert(
+          'Camera permission needed',
+          'Enable camera access for 369 in Settings to scan barcodes with the camera.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ],
+        );
+      }
+    })();
+  }, [scanMode, permission?.granted, requestPermission]);
 
-  // Manual controls: wrap-around prev / next (scroll + sync index).
-  const goTo = (next: number) => {
+  // A video on Auto (no custom seconds) plays its full length, then the video's
+  // own end drives the advance — not a fixed timer.
+  const drivesAdvance = (b?: SignageBanner) =>
+    !!b && b.media_type === 'video' && !b.scroll_seconds && banners.length >= 2;
+
+  const advanceNext = () => {
+    if (banners.length < 2) return;
+    const next = (index + 1) % banners.length;
     listRef.current?.scrollToOffset({ offset: next * W, animated: true });
     setIndex(next);
   };
-  const goNext = () => {
-    if (ads.length) goTo((index + 1) % ads.length);
-  };
-  const goPrev = () => {
-    if (ads.length) goTo((index - 1 + ads.length) % ads.length);
+
+  const onVideoEnded = () => {
+    if (scanBusy || paused) return;
+    advanceNext();
   };
 
-  const renderItem = ({ item, index: i }: { item: AdItem; index: number }) => {
+  // Auto-advance banners — paused while a scan overlay is open or the user paused.
+  useEffect(() => {
+    if (scanBusy || paused || banners.length < 2 || slideH === 0) return;
+    const b = banners[index];
+    // Auto videos advance on their own end (onVideoEnded). Keep a long safety cap
+    // so a broken/loopless clip that never fires 'playToEnd' can't freeze the show.
+    const ms = drivesAdvance(b)
+      ? 60000
+      : Math.max(2, Number(b?.scroll_seconds) || DEFAULT_SECONDS) * 1000;
+    const t = setTimeout(advanceNext, ms);
+    return () => clearTimeout(t);
+  }, [index, banners, slideH, scanBusy, paused]);
+
+  // Keep the hidden input focused so a USB barcode scanner (keyboard-wedge)
+  // types into it — only in USB mode, and not while an overlay is up.
+  useEffect(() => {
+    if (!usbEnabled || scanBusy) return;
+    const t = setTimeout(() => usbRef.current?.focus(), 350);
+    return () => clearTimeout(t);
+  }, [usbEnabled, scanBusy, banners.length]);
+
+  // Auto-dismiss the product detail after the shared (server) display time.
+  useEffect(() => {
+    if (!result) return;
+    const secs = Math.max(2, result.detail_seconds || 8);
+    const t = setTimeout(() => {
+      setResult(null);
+      lastScan.current = { code: '', t: 0 };
+    }, secs * 1000);
+    return () => clearTimeout(t);
+  }, [result]);
+
+  // Auto-dismiss the not-found message.
+  useEffect(() => {
+    if (!notFound) return;
+    const t = setTimeout(() => {
+      setNotFound('');
+      lastScan.current = { code: '', t: 0 };
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [notFound]);
+
+  const doLookup = async (code: string) => {
+    const c = code.trim();
+    // Ignore new scans while a result / not-found popup is up — the user must
+    // close it (X) or wait for the timeout before the next scan works.
+    if (!c || looking || result || notFound) return;
+    setLooking(true);
+    setNotFound('');
+    setResult(null);
+    try {
+      const r = await lookupProduct(base, c);
+      if (r.found) setResult(r);
+      else setNotFound(c);
+    } catch {
+      setNotFound(c);
+    } finally {
+      setLooking(false);
+    }
+  };
+
+  const onUsbSubmit = () => {
+    const code = usbValue;
+    setUsbValue('');
+    // A USB scan proves a scanner is attached → prefer it (Auto turns camera off).
+    if (code.trim()) setUsbActive(true);
+    doLookup(code);
+  };
+
+  // Camera keeps scanning continuously; the same code within 2.5s is ignored so
+  // one barcode in view doesn't fire the lookup on every frame.
+  const onBarcode = ({ data }: { data: string }) => {
+    if (scanBusy) return; // a popup is up → don't scan until it's closed / times out
+    const now = Date.now();
+    if (data === lastScan.current.code && now - lastScan.current.t < 2500) return;
+    lastScan.current = { code: data, t: now };
+    doLookup(data);
+  };
+
+  const dismiss = () => {
+    setResult(null);
+    setNotFound('');
+    lastScan.current = { code: '', t: 0 };
+  };
+
+  // ---- Banner player controls ------------------------------------------
+  const revealControls = useCallback(() => {
+    setControlsVisible(true);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setControlsVisible(false), CONTROLS_HIDE_MS);
+  }, []);
+
+  // On entering Home, briefly show the nav + controls, then go full-screen.
+  useEffect(() => {
+    if (isFocused) revealControls();
+  }, [isFocused, revealControls]);
+
+  // Auto-hide the bottom tab bar while Home is focused (full-screen signage);
+  // tapping reveals the controls → shows it again; leaving Home restores it.
+  useEffect(() => {
+    setHidden(isFocused && !controlsVisible);
+  }, [isFocused, controlsVisible, setHidden]);
+  useEffect(() => () => setHidden(false), [setHidden]);
+
+  // Fade the top bar / scan bar / controls together with the reveal state.
+  useEffect(() => {
+    Animated.timing(uiOpacity, {
+      toValue: controlsVisible ? 1 : 0,
+      duration: 260,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [controlsVisible, uiOpacity]);
+
+  // Pop the scanned-product / not-found popup in; close the enlarged camera.
+  useEffect(() => {
+    if (result || notFound) {
+      setCamModal(false);
+      pop.setValue(0);
+      Animated.spring(pop, { toValue: 1, friction: 7, tension: 80, useNativeDriver: true }).start();
+    }
+  }, [result, notFound, pop]);
+
+  const popScale = pop.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] });
+
+  const toggleControls = () => {
+    if (controlsVisible) {
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+      setControlsVisible(false);
+    } else {
+      revealControls();
+    }
+  };
+
+  const go = (dir: number) => {
+    if (!banners.length) return;
+    const next = (index + dir + banners.length) % banners.length;
+    listRef.current?.scrollToOffset({ offset: next * W, animated: true });
+    setIndex(next);
+    revealControls();
+  };
+
+  const goTo = (i: number) => {
+    listRef.current?.scrollToOffset({ offset: i * W, animated: true });
+    setIndex(i);
+    revealControls();
+  };
+
+  const spinDeg = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const onRefresh = () => {
+    spin.setValue(0);
+    Animated.timing(spin, { toValue: 1, duration: 600, easing: Easing.linear, useNativeDriver: true }).start();
+    load();
+    revealControls();
+  };
+
+  const togglePause = () => {
+    setPaused((p) => !p);
+    revealControls();
+  };
+
+  // TV remote support: any key reveals the controls; the play/pause key toggles.
+  useEffect(() => {
+    if (!Platform.isTV) return;
+    // Accessed defensively — TVEventHandler only exists on TV builds.
+    const RN = require('react-native');
+    const TVEventHandler = RN.TVEventHandler;
+    if (!TVEventHandler) return;
+    const handler = new TVEventHandler();
+    handler.enable(null, (_cmp: unknown, evt: { eventType?: string } | undefined) => {
+      if (!evt) return;
+      revealControls();
+      if (evt.eventType === 'playPause') setPaused((p) => !p);
+    });
+    return () => {
+      try {
+        handler.disable();
+      } catch {
+        // ignore
+      }
+    };
+  }, [revealControls]);
+
+  const renderBanner = ({ item, index: i }: { item: SignageBanner; index: number }) => {
     const isVideo = item.media_type === 'video' && !!item.video;
-    const showQr = !item.has_qr && !!item.qr;
-    // Where a tap goes: link → its URL; product → the live-price page.
-    const target =
-      item.qr_source === 'link' && item.link_url
-        ? item.link_url
-        : item.qr_source === 'product' && item.landing_url
-          ? toReachable(item.landing_url, user?.base_url || '')
-          : false;
-    const inner = (
+    return (
       <View style={{ width: W, height: slideH, backgroundColor: '#0b0b12' }}>
         {isVideo ? (
-          <VideoSlide
-            uri={toReachable(item.video as string, user?.base_url || '') as string}
-            active={i === index}
+          <BannerVideo
+            id={item.id}
+            uri={toReachable(item.video as string, base) as string}
+            active={i === index && !scanBusy && !paused}
+            loop={!drivesAdvance(item)}
+            onEnded={i === index && drivesAdvance(item) ? onVideoEnded : undefined}
           />
         ) : item.image ? (
           <Image source={{ uri: item.image }} style={styles.image} resizeMode="contain" />
@@ -150,23 +464,10 @@ export default function CarouselScreen() {
             <Ionicons name="image-outline" size={64} color="#2a2a35" />
           </View>
         )}
-        {showQr ? (
-          <View style={styles.qrCard}>
-            <Image source={{ uri: item.qr as string }} style={styles.qrImg} resizeMode="contain" />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.qrTitle}>Scan to open</Text>
-              <Text style={styles.qrName} numberOfLines={1}>
-                {item.name}
-              </Text>
-            </View>
-          </View>
-        ) : null}
+        {/* Transparent tap layer on top — reveals the player controls even over a
+            video, whose native surface would otherwise swallow the touch. */}
+        <Pressable style={StyleSheet.absoluteFill} onPress={toggleControls} />
       </View>
-    );
-    return target ? (
-      <Pressable onPress={() => Linking.openURL(target as string)}>{inner}</Pressable>
-    ) : (
-      inner
     );
   };
 
@@ -175,24 +476,14 @@ export default function CarouselScreen() {
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color="#fff" size="large" />
-          <Text style={styles.dim}>Loading ads…</Text>
+          <Text style={styles.dim}>Loading…</Text>
         </View>
-      ) : error ? (
+      ) : banners.length === 0 ? (
         <View style={styles.center}>
-          <Ionicons name="cloud-offline-outline" size={54} color="#4b4b57" />
-          <Text style={styles.stateTitle}>Couldn’t load ads</Text>
-          <Text style={styles.dim}>{error}</Text>
-          <Pressable style={styles.retry} onPress={() => load()}>
-            <Ionicons name="refresh" size={16} color="#fff" />
-            <Text style={styles.retryText}>Retry</Text>
-          </Pressable>
-        </View>
-      ) : ads.length === 0 ? (
-        <View style={styles.center}>
-          <Ionicons name="megaphone-outline" size={54} color="#4b4b57" />
-          <Text style={styles.stateTitle}>No ads are live</Text>
-          <Text style={styles.dim}>Add an ad in Odoo → Ad Carousel, then refresh.</Text>
-          <Pressable style={styles.retry} onPress={() => load(true)}>
+          <Ionicons name="tv-outline" size={54} color="#4b4b57" />
+          <Text style={styles.stateTitle}>No banners yet</Text>
+          <Text style={styles.dim}>Add banners in Odoo → Signage Scan → Banners, then refresh.</Text>
+          <Pressable style={styles.retry} onPress={load}>
             <Ionicons name="refresh" size={16} color="#fff" />
             <Text style={styles.retryText}>Refresh</Text>
           </Pressable>
@@ -200,61 +491,204 @@ export default function CarouselScreen() {
       ) : slideH > 0 ? (
         <FlatList
           ref={listRef}
-          data={ads}
-          keyExtractor={(a) => String(a.id)}
-          renderItem={renderItem}
+          data={banners}
+          keyExtractor={(b) => String(b.id)}
+          renderItem={renderBanner}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={onMomentumEnd}
+          onMomentumScrollEnd={(e: NativeSyntheticEvent<NativeScrollEvent>) =>
+            setIndex(Math.round(e.nativeEvent.contentOffset.x / W))
+          }
           getItemLayout={(_, i) => ({ length: W, offset: W * i, index: i })}
         />
       ) : null}
 
-      {/* Top overlay: live count + refresh + page dots */}
-      {!loading && !error && ads.length > 0 ? (
+      {/* Hidden USB / keyboard-wedge scanner input (no soft keyboard). USB + Auto. */}
+      {usbEnabled ? (
+        <TextInput
+          ref={usbRef}
+          value={usbValue}
+          onChangeText={setUsbValue}
+          onSubmitEditing={onUsbSubmit}
+          submitBehavior="submit"
+          showSoftInputOnFocus={false}
+          autoCorrect={false}
+          autoCapitalize="none"
+          caretHidden
+          style={styles.hiddenInput}
+        />
+      ) : null}
+
+      {/* Top bar — dots always visible; count + reload fade with the reveal state */}
+      {!loading && banners.length > 0 ? (
         <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.topBar}>
-          <View style={styles.pill}>
-            <View style={styles.liveDot} />
-            <Text style={styles.pillText}>
-              {ads.length} {ads.length === 1 ? 'ad' : 'ads'} live
-            </Text>
-          </View>
+          <Animated.View style={{ opacity: uiOpacity }} pointerEvents="none">
+            <View style={styles.pill}>
+              <View style={styles.liveDot} />
+              <Text style={styles.pillText}>
+                {banners.length} {banners.length === 1 ? 'banner' : 'banners'}
+              </Text>
+            </View>
+          </Animated.View>
           <View style={styles.dots}>
-            {ads.map((a, i) => (
-              <View key={a.id} style={[styles.dot, i === index && styles.dotActive]} />
+            {banners.map((b, i) => (
+              <Pressable key={b.id} onPress={() => goTo(i)} hitSlop={8}>
+                <View style={[styles.dot, i === index && styles.dotActive]} />
+              </Pressable>
             ))}
           </View>
-          <Pressable
-            onPress={() => load(true)}
-            style={styles.refresh}
-            hitSlop={10}>
-            <Ionicons
-              name="refresh"
-              size={18}
-              color="#fff"
-              style={refreshing ? { opacity: 0.5 } : undefined}
-            />
-          </Pressable>
+          <Animated.View style={{ opacity: uiOpacity }} pointerEvents={controlsVisible ? 'auto' : 'none'}>
+            <Pressable onPress={onRefresh} style={styles.refresh} hitSlop={10}>
+              <Animated.View style={{ transform: [{ rotate: spinDeg }] }}>
+                <Ionicons name="refresh" size={18} color="#fff" />
+              </Animated.View>
+            </Pressable>
+          </Animated.View>
         </SafeAreaView>
       ) : null}
 
-      {/* Bottom overlay: manual  <   ⏸/▶   >  controls */}
-      {!loading && !error && ads.length > 0 ? (
-        <SafeAreaView edges={['bottom']} pointerEvents="box-none" style={styles.bottomBar}>
-          <View style={styles.controls}>
-            <Pressable onPress={goPrev} hitSlop={8} style={styles.ctrlBtn}>
-              <Ionicons name="chevron-back" size={26} color="#fff" />
-            </Pressable>
-            <Pressable onPress={() => setPaused((p) => !p)} hitSlop={8} style={[styles.ctrlBtn, styles.ctrlMain]}>
-              <Ionicons name={paused ? 'play' : 'pause'} size={24} color="#fff" />
-            </Pressable>
-            <Pressable onPress={goNext} hitSlop={8} style={styles.ctrlBtn}>
-              <Ionicons name="chevron-forward" size={26} color="#fff" />
+      {/* Bottom scan bar (Camera mode) — hidden until tapped (like the controls);
+          the camera keeps scanning underneath even while hidden (opacity 0). */}
+      {cameraLive ? (
+        <Animated.View
+          pointerEvents={controlsVisible ? 'box-none' : 'none'}
+          style={[styles.scanBarWrap, { bottom: barLift, opacity: uiOpacity }]}>
+          <Pressable style={styles.scanBar} onPress={() => { setCamModal(true); revealControls(); }}>
+            <View style={styles.viewfinder}>
+              <CameraView
+                style={StyleSheet.absoluteFill}
+                onBarcodeScanned={onBarcode}
+                barcodeScannerSettings={{ barcodeTypes: [...BARCODE_TYPES] }}
+              />
+              <View style={styles.viewfinderExpand}>
+                <Ionicons name="expand" size={12} color="#fff" />
+              </View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.scanBarTitle}>Point a barcode at the camera</Text>
+              <Text style={styles.scanBarHint}>Tap to enlarge</Text>
+            </View>
+            <View style={styles.scanDot} />
+          </Pressable>
+        </Animated.View>
+      ) : null}
+
+      {/* Banner player controls — fade in/out with the reveal state */}
+      {!loading && banners.length > 0 ? (
+        <Animated.View
+          pointerEvents={controlsVisible ? 'box-none' : 'none'}
+          style={[styles.controls, { bottom: barLift + (cameraLive ? 88 : 0), opacity: uiOpacity }]}>
+          <View style={styles.ctrlRow}>
+              <Pressable focusable onPress={() => go(-1)} style={styles.ctrlBtn} hitSlop={8}>
+                <Ionicons name="play-skip-back" size={24} color="#fff" />
+              </Pressable>
+              <Pressable
+                focusable
+                hasTVPreferredFocus
+                onPress={togglePause}
+                style={[styles.ctrlBtn, styles.ctrlBtnMain]}
+                hitSlop={8}>
+                <Ionicons name={paused ? 'play' : 'pause'} size={28} color="#fff" />
+              </Pressable>
+            <Pressable focusable onPress={() => go(1)} style={styles.ctrlBtn} hitSlop={8}>
+              <Ionicons name="play-skip-forward" size={24} color="#fff" />
             </Pressable>
           </View>
-        </SafeAreaView>
+        </Animated.View>
       ) : null}
+
+      {/* Looking up */}
+      {looking ? (
+        <View style={styles.overlay}>
+          <ActivityIndicator color="#fff" size="large" />
+          <Text style={[styles.dim, { marginTop: 10 }]}>Looking up…</Text>
+        </View>
+      ) : null}
+
+      {/* Product detail */}
+      {result ? (
+        <Pressable style={styles.overlay} onPress={dismiss}>
+          <Animated.View style={[styles.popWrap, { opacity: pop, transform: [{ scale: popScale }] }]}>
+          <Pressable style={styles.detailCard} onPress={() => {}}>
+            <View style={styles.detailImgWrap}>
+              {result.image ? (
+                <Image source={{ uri: result.image }} style={styles.detailImg} resizeMode="contain" />
+              ) : (
+                <View style={[styles.detailImg, styles.detailImgEmpty]}>
+                  <Ionicons name="cube-outline" size={44} color="#c3c7d0" />
+                </View>
+              )}
+              <View style={styles.foundBadge}>
+                <Ionicons name="checkmark" size={15} color="#fff" />
+              </View>
+            </View>
+            <Text style={styles.detailName}>{result.name}</Text>
+            {result.rows.length ? (
+              <>
+                <Text style={styles.detailHeadValue} numberOfLines={1}>
+                  {result.rows[0].value}
+                </Text>
+                <Text style={styles.detailHeadLabel}>{result.rows[0].label}</Text>
+                {result.rows.length > 1 ? (
+                  <View style={styles.rows}>
+                    {result.rows.slice(1).map((r, i) => (
+                      <View key={`${r.label}-${i}`} style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>{r.label}</Text>
+                        <Text style={styles.detailValue}>{r.value}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+            <Pressable onPress={dismiss} style={styles.detailClose}>
+              <Text style={styles.detailCloseText}>Close</Text>
+            </Pressable>
+          </Pressable>
+          </Animated.View>
+        </Pressable>
+      ) : null}
+
+      {/* Not found */}
+      {notFound ? (
+        <Pressable style={styles.overlay} onPress={dismiss}>
+          <Animated.View style={[styles.popWrap, { opacity: pop, transform: [{ scale: popScale }] }]}>
+          <View style={styles.detailCard}>
+            <Ionicons name="alert-circle-outline" size={52} color={Brand.rose} />
+            <Text style={styles.detailName}>Not found</Text>
+            <Text style={[styles.dim, { marginTop: 6 }]}>
+              No product for “{notFound}”, or it’s turned off for scan.
+            </Text>
+            <Pressable onPress={dismiss} style={styles.detailClose}>
+              <Text style={styles.detailCloseText}>Try again</Text>
+            </Pressable>
+          </View>
+          </Animated.View>
+        </Pressable>
+      ) : null}
+
+      {/* Enlarged camera (tap the scan bar viewfinder) */}
+      <Modal visible={camModal} transparent animationType="fade" onRequestClose={() => setCamModal(false)}>
+        <Pressable style={styles.camModalWrap} onPress={() => setCamModal(false)}>
+          <View style={styles.camModalCard}>
+            {camModal ? (
+              <CameraView
+                style={StyleSheet.absoluteFill}
+                onBarcodeScanned={onBarcode}
+                barcodeScannerSettings={{ barcodeTypes: [...BARCODE_TYPES] }}
+              />
+            ) : null}
+            <View style={styles.camScanOverlay} pointerEvents="none">
+              <View style={styles.camScanFrame} />
+              <Text style={styles.camScanHint}>Point camera at the barcode</Text>
+            </View>
+            <Pressable style={styles.camModalClose} onPress={() => setCamModal(false)} hitSlop={10}>
+              <Ionicons name="close" size={22} color="#fff" />
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -276,26 +710,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   retryText: { color: '#fff', fontWeight: '700' },
-  qrCard: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 104,
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-  },
-  qrImg: { width: 76, height: 76, borderRadius: 8, backgroundColor: '#fff' },
-  qrTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
-  qrName: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+  hiddenInput: { position: 'absolute', width: 1, height: 1, opacity: 0, top: -100 },
   topBar: {
     position: 'absolute',
     top: 0,
@@ -318,7 +733,15 @@ const styles = StyleSheet.create({
   },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22c55e' },
   pillText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  dots: { flexDirection: 'row', gap: 5, alignItems: 'center' },
+  dots: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)' },
   dotActive: { width: 18, backgroundColor: '#fff' },
   refresh: {
@@ -329,16 +752,172 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, alignItems: 'center', paddingBottom: 14 },
-  controls: {
+  // Bottom scan bar (Camera mode) — sits above the floating tab bar.
+  scanBarWrap: { position: 'absolute', left: 0, right: 0 },
+  scanBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    gap: 12,
+    marginHorizontal: 14,
+    padding: 10,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.62)',
   },
-  ctrlBtn: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
-  ctrlMain: { backgroundColor: 'rgba(255,255,255,0.18)' },
+  viewfinder: {
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: '#000',
+  },
+  viewfinderExpand: {
+    position: 'absolute',
+    right: 3,
+    top: 3,
+    width: 18,
+    height: 18,
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanBarTitle: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  scanBarHint: { color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 2, fontWeight: '700' },
+  scanDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#22c55e', marginRight: 6 },
+  popWrap: { width: '100%', alignItems: 'center' },
+  // Enlarged camera modal
+  camModalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  // Landscape (wide) window — matches a horizontal barcode.
+  // Square keeps the phone's portrait camera preview undistorted (16:9 stretched it).
+  camModalCard: { width: '86%', maxWidth: 360, aspectRatio: 1, borderRadius: 22, overflow: 'hidden', backgroundColor: '#000' },
+  camScanOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  camScanFrame: {
+    width: '80%',
+    aspectRatio: 280 / 150,
+    borderWidth: 2.5,
+    borderColor: '#FF9800',
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+  },
+  camScanHint: {
+    marginTop: 16,
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+    textAlign: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  camModalClose: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Banner player controls
+  controls: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    gap: 10,
+  },
+  modeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  modeChipText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  ctrlRow: { flexDirection: 'row', alignItems: 'center', gap: 22 },
+  ctrlBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ctrlBtnMain: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Brand.indigo,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  detailCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#fff',
+    borderRadius: 26,
+    padding: 24,
+    alignItems: 'center',
+  },
+  detailImgWrap: { marginBottom: 14 },
+  detailImg: { width: 150, height: 150, borderRadius: 20, backgroundColor: '#f4f5f7', borderWidth: 1, borderColor: '#eef0f4' },
+  detailImgEmpty: { alignItems: 'center', justifyContent: 'center' },
+  foundBadge: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  detailName: { fontSize: 20, fontWeight: '900', color: '#111827', textAlign: 'center' },
+  detailHeadValue: { fontSize: 30, fontWeight: '900', color: Brand.indigo, textAlign: 'center', marginTop: 10 },
+  detailHeadLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#9aa0ac',
+    textAlign: 'center',
+    marginTop: 2,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  rows: { alignSelf: 'stretch', marginTop: 16 },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f1f4',
+    gap: 14,
+  },
+  detailLabel: { fontSize: 14, color: '#6b7280', fontWeight: '600' },
+  detailValue: { fontSize: 15, color: '#111827', fontWeight: '800', flexShrink: 1, textAlign: 'right' },
+  detailClose: {
+    marginTop: 18,
+    alignSelf: 'stretch',
+    backgroundColor: Brand.indigo,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  detailCloseText: { color: '#fff', fontWeight: '800', fontSize: 15 },
 });

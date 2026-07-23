@@ -26,6 +26,10 @@ export function normalizeUrl(input: string): string {
   let u = (input || '').trim();
   if (!u) return '';
   if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+  // Fix an IP typed with the port after a dot, e.g. 192.168.1.5.8069 ->
+  // 192.168.1.5:8069 (matches the desktop admin app's LoginScreenOdoo handling,
+  // so /web/database/list resolves and the DB dropdown populates).
+  u = u.replace(/(\d+\.\d+\.\d+\.\d+)\.(\d+)(\/.*)?$/, '$1:$2$3');
   return u.replace(/\/+$/, '');
 }
 
@@ -431,4 +435,606 @@ export async function getEnquiries(baseUrl: string): Promise<AppEnquiry[]> {
         handled: !!e.handled,
       }))
     : [];
+}
+
+// ---- Signage Scan module -------------------------------------------------
+
+/** One signage banner (from /signage/banners). */
+export type SignageBanner = {
+  id: number;
+  name: string;
+  media_type: 'image' | 'video';
+  image: string | false;
+  video: string | false;
+  scroll_seconds: number | false;
+};
+
+/** Live signage banners for the full-screen display. */
+export async function getSignageBanners(baseUrl: string): Promise<SignageBanner[]> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/banners`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: {},
+  });
+  if (data?.error)
+    throw new Error(data.error?.data?.message || data.error?.message || 'Could not load banners.');
+  return Array.isArray(data?.result) ? data.result : [];
+}
+
+/** One label:value row in a scanned product's detail. */
+export type ProductRow = { label: string; value: string };
+
+/** Result of scanning a product barcode (from /signage/lookup). */
+export type ProductLookup = {
+  found: boolean;
+  name: string;
+  image: string | false;
+  rows: ProductRow[];
+  /** How long to keep the detail on screen (seconds), from the shared setting. */
+  detail_seconds: number;
+};
+
+/** The shared 'detail display time' setting. */
+export type DetailConfig = { value: number; unit: 'sec' | 'min'; seconds: number };
+
+export async function getDetailConfig(baseUrl: string): Promise<DetailConfig> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/detail/get`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: {},
+  });
+  const r = data?.result || {};
+  return {
+    value: Number(r.value) || 8,
+    unit: r.unit === 'min' ? 'min' : 'sec',
+    seconds: Number(r.seconds) || 8,
+  };
+}
+
+export async function setDetailConfig(
+  baseUrl: string,
+  value: number,
+  unit: 'sec' | 'min',
+): Promise<DetailConfig> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/detail/set`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { value, unit },
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not save.'));
+  const r = data?.result || {};
+  if (r?.error) throw new Error(r.error);
+  return {
+    value: Number(r.value) || value,
+    unit: r.unit === 'min' ? 'min' : 'sec',
+    seconds: Number(r.seconds) || value,
+  };
+}
+
+/** Look up a product by barcode; returns the admin-selected fields for it. */
+export async function lookupProduct(baseUrl: string, barcode: string): Promise<ProductLookup> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/lookup`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { barcode },
+  });
+  if (data?.error)
+    throw new Error(data.error?.data?.message || data.error?.message || 'Lookup failed.');
+  const r = data?.result || {};
+  return {
+    found: !!r.found,
+    name: r.name || '',
+    image: r.image ?? false,
+    rows: Array.isArray(r.rows)
+      ? r.rows.map((x: any) => ({ label: x.label || '', value: x.value ?? '' }))
+      : [],
+    detail_seconds: Number(r.detail_seconds) || 8,
+  };
+}
+
+// ---- Signage management (managers only) ----------------------------------
+
+function errOf(data: any, fallback: string): string {
+  return data?.error?.data?.message || data?.error?.message || fallback;
+}
+
+/** Whether the signed-in user may manage signage (create rights). */
+export async function signageCanManage(baseUrl: string): Promise<boolean> {
+  try {
+    const data = await postJson(`${normalizeUrl(baseUrl)}/signage/can_manage`, {
+      jsonrpc: '2.0',
+      method: 'call',
+      params: {},
+    });
+    return data?.result === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Dashboard counts for the Manage overview. */
+export type SignageStats = {
+  banners_total: number;
+  banners_live: number;
+  banners_video: number;
+  banners_image: number;
+  products_total: number;
+  products_on_scan: number;
+};
+
+export async function getSignageStats(baseUrl: string): Promise<SignageStats> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/stats`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: {},
+  });
+  const r = data?.result || {};
+  return {
+    banners_total: Number(r.banners_total) || 0,
+    banners_live: Number(r.banners_live) || 0,
+    banners_video: Number(r.banners_video) || 0,
+    banners_image: Number(r.banners_image) || 0,
+    products_total: Number(r.products_total) || 0,
+    products_on_scan: Number(r.products_on_scan) || 0,
+  };
+}
+
+/** One banner card for the app's manage screen. */
+export type ManageBanner = {
+  id: number;
+  name: string;
+  media_type: 'image' | 'video';
+  active: boolean;
+  is_live: boolean;
+  thumb: string | false;
+  has_video: boolean;
+  /** Streamable video path (manager route), or false. */
+  video: string | false;
+};
+
+/** All banners (incl. archived) for the manage card grid. */
+export async function getManageBanners(baseUrl: string): Promise<ManageBanner[]> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/banners/manage`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: {},
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not load banners.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return Array.isArray(r?.banners)
+    ? r.banners.map((b: any) => ({
+        id: b.id,
+        name: b.name || '',
+        media_type: b.media_type,
+        active: !!b.active,
+        is_live: !!b.is_live,
+        thumb: b.thumb ?? false,
+        has_video: !!b.has_video,
+        video: b.video ?? false,
+      }))
+    : [];
+}
+
+/** Full banner detail for the app's create/edit form. */
+export type BannerDetail = {
+  id: number;
+  name: string;
+  media_type: 'image' | 'video';
+  image: string | false;
+  has_video: boolean;
+  video: string | false;
+  video_filename: string;
+  duration_mode: 'auto' | 'custom';
+  scroll_seconds: number;
+  sequence: number;
+  active: boolean;
+  date_start: string;
+  date_end: string;
+};
+
+export async function getBannerDetail(baseUrl: string, bannerId: number): Promise<BannerDetail> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/banner/get`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { banner_id: bannerId },
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not load the banner.'));
+  const r = data?.result;
+  if (!r || r.error) throw new Error(r?.error || 'Banner not found.');
+  return {
+    id: r.id,
+    name: r.name || '',
+    media_type: r.media_type,
+    image: r.image ?? false,
+    has_video: !!r.has_video,
+    video: r.video ?? false,
+    video_filename: r.video_filename || '',
+    duration_mode: r.duration_mode || 'auto',
+    scroll_seconds: r.scroll_seconds || 6,
+    sequence: r.sequence || 10,
+    active: !!r.active,
+    date_start: r.date_start || '',
+    date_end: r.date_end || '',
+  };
+}
+
+/** Fields the app sends to create/update a banner (media = bare base64/data URI). */
+export type BannerSave = {
+  banner_id?: number;
+  name: string;
+  media_type: 'image' | 'video';
+  image?: string;
+  video?: string;
+  video_filename?: string;
+  duration_mode: 'auto' | 'custom';
+  scroll_seconds?: number;
+  sequence?: number;
+  active: boolean;
+  date_start?: string;
+  date_end?: string;
+};
+
+export async function saveBanner(
+  baseUrl: string,
+  payload: BannerSave,
+): Promise<{ id: number; name: string }> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/banner/save`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { ...payload },
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not save the banner.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  if (!r?.id) throw new Error('Could not save the banner.');
+  return { id: r.id, name: r.name };
+}
+
+/** One product field available to add on scan (the app's field picker). */
+export type ProductField = { field_id: number; name: string; label: string; ttype: string };
+
+/** Every product field that can be shown on scan (for 'Add field'). */
+export async function getProductFields(baseUrl: string): Promise<ProductField[]> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/fields`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: {},
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not load fields.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return Array.isArray(r?.fields)
+    ? r.fields.map((f: any) => ({
+        field_id: f.field_id,
+        name: f.name || '',
+        label: f.label || '',
+        ttype: f.ttype || '',
+      }))
+    : [];
+}
+
+/** One product row for the Scan Fields list. */
+export type ScanProduct = {
+  id: number;
+  name: string;
+  barcode: string;
+  signage_enabled: boolean;
+  thumb: string | false;
+};
+
+/** Products with their master on/off state (the app's Scan Fields list). */
+export async function getScanProducts(baseUrl: string, query = ''): Promise<ScanProduct[]> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/products`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { query },
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not load products.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return Array.isArray(r?.products)
+    ? r.products.map((p: any) => ({
+        id: p.id,
+        name: p.name || '',
+        barcode: p.barcode || '',
+        signage_enabled: !!p.signage_enabled,
+        thumb: p.thumb ?? false,
+      }))
+    : [];
+}
+
+/** Quick master on/off for a product from the Scan Fields list. */
+export async function toggleScanProduct(
+  baseUrl: string,
+  tmplId: number,
+  enabled: boolean,
+): Promise<boolean> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/product/toggle`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { tmpl_id: tmplId, enabled },
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not update.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return r?.ok === true;
+}
+
+/** One field toggle row in a product's scan config. */
+export type ScanConfigField = {
+  line_id: number;
+  field_id: number;
+  name: string;
+  label: string;
+  show: boolean;
+};
+
+/** A product's full scan config (every option the module has). */
+export type ScanProductConfig = {
+  id: number;
+  name: string;
+  barcode: string;
+  image: string | false;
+  signage_enabled: boolean;
+  signage_show_image: boolean;
+  fields: ScanConfigField[];
+};
+
+export async function getScanProductConfig(
+  baseUrl: string,
+  tmplId: number,
+): Promise<ScanProductConfig> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/product/get`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { tmpl_id: tmplId },
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not load the product.'));
+  const r = data?.result;
+  if (!r || r.error) throw new Error(r?.error || 'Product not found.');
+  return {
+    id: r.id,
+    name: r.name || '',
+    barcode: r.barcode || '',
+    image: r.image ?? false,
+    signage_enabled: !!r.signage_enabled,
+    signage_show_image: !!r.signage_show_image,
+    fields: Array.isArray(r.fields)
+      ? r.fields.map((f: any) => ({
+          line_id: f.line_id,
+          field_id: f.field_id,
+          name: f.name || '',
+          label: f.label || '',
+          show: !!f.show,
+        }))
+      : [],
+  };
+}
+
+export async function saveScanProductConfig(
+  baseUrl: string,
+  payload: {
+    tmpl_id: number;
+    signage_enabled: boolean;
+    signage_show_image: boolean;
+    fields: { field_id: number; show: boolean }[];
+  },
+): Promise<boolean> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/product/save`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: payload,
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not save.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return r?.ok === true;
+}
+
+/** Global scan-fields config: one shared field set shown for every product. */
+export type GlobalScanFields = { mode: boolean; fields: ScanConfigField[] };
+
+/** Read the global scan-fields mode + shared field list. */
+export async function getGlobalScanFields(baseUrl: string): Promise<GlobalScanFields> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/global_fields/get`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: {},
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not load global fields.'));
+  const r = data?.result || {};
+  return {
+    mode: !!r.mode,
+    fields: Array.isArray(r.fields)
+      ? r.fields.map((f: any) => ({
+          line_id: f.line_id,
+          field_id: f.field_id,
+          name: f.name || '',
+          label: f.label || '',
+          show: !!f.show,
+        }))
+      : [],
+  };
+}
+
+/** Save the global mode and (optionally) the shared field list. Pass only
+ *  `mode` to flip the toggle without touching the list. */
+export async function setGlobalScanFields(
+  baseUrl: string,
+  payload: { mode: boolean; fields?: { field_id: number; show: boolean }[] },
+): Promise<boolean> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/global_fields/set`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: payload,
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not save.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return r?.ok === true;
+}
+
+// ---- Product create / edit (admins only) ---------------------------------
+
+/** A product category (or unit) for a picker. */
+export type ProductCategory = { id: number; name: string };
+export type ProductUom = { id: number; name: string };
+
+export async function getCategories(baseUrl: string): Promise<ProductCategory[]> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/categories`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: {},
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not load categories.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return Array.isArray(r?.categories)
+    ? r.categories.map((x: any) => ({ id: x.id, name: x.name || '' }))
+    : [];
+}
+
+export async function getUoms(baseUrl: string): Promise<ProductUom[]> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/uoms`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: {},
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not load units.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return Array.isArray(r?.uoms) ? r.uoms.map((x: any) => ({ id: x.id, name: x.name || '' })) : [];
+}
+
+/** One custom (manual) product field shown dynamically on the form. */
+export type CustomField = {
+  name: string;
+  label: string;
+  ttype: 'char' | 'text' | 'float' | 'monetary' | 'integer' | 'boolean' | 'selection' | 'many2one' | 'date' | 'datetime' | string;
+  value: string | number | boolean;
+  /** selection: [value, label] options. */
+  options?: [string, string][];
+  /** many2one: related model + current record's display name. */
+  relation?: string;
+  value_label?: string;
+};
+
+/** One related-model record for a many2one custom-field picker. */
+export type RelationRecord = { id: number; name: string };
+
+export async function getRelationRecords(
+  baseUrl: string,
+  model: string,
+  query = '',
+): Promise<RelationRecord[]> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/relation/search`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { model, query },
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not load records.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return Array.isArray(r?.records) ? r.records.map((x: any) => ({ id: x.id, name: x.name || '' })) : [];
+}
+
+/** Editable product basics (from /signage/product/basic/get). */
+export type ProductBasics = {
+  id: number;
+  name: string;
+  barcode: string;
+  list_price: number;
+  standard_price: number;
+  categ_id: number | false;
+  categ_name: string;
+  default_code: string;
+  uom_id: number | false;
+  uom_name: string;
+  description_sale: string;
+  image: string | false;
+  custom_fields: CustomField[];
+};
+
+export async function getProductBasics(baseUrl: string, tmplId: number): Promise<ProductBasics> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/product/basic/get`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { tmpl_id: tmplId },
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not load the product.'));
+  const r = data?.result;
+  if (!r || r.error) throw new Error(r?.error || 'Product not found.');
+  return {
+    id: r.id,
+    name: r.name || '',
+    barcode: r.barcode || '',
+    list_price: Number(r.list_price) || 0,
+    standard_price: Number(r.standard_price) || 0,
+    categ_id: r.categ_id ?? false,
+    categ_name: r.categ_name || '',
+    default_code: r.default_code || '',
+    uom_id: r.uom_id ?? false,
+    uom_name: r.uom_name || '',
+    description_sale: r.description_sale || '',
+    image: r.image ?? false,
+    custom_fields: Array.isArray(r.custom_fields)
+      ? r.custom_fields.map((f: any) => ({
+          name: f.name,
+          label: f.label || f.name,
+          ttype: f.ttype,
+          value: f.value,
+          options: Array.isArray(f.options) ? f.options : undefined,
+          relation: f.relation || undefined,
+          value_label: f.value_label || undefined,
+        }))
+      : [],
+  };
+}
+
+/** Fields the app sends to create/update a product (image = bare base64/data URI). */
+export type ProductInput = {
+  name: string;
+  barcode?: string;
+  list_price?: number;
+  standard_price?: number;
+  categ_id?: number;
+  default_code?: string;
+  uom_id?: number;
+  description_sale?: string;
+  image?: string;
+  /** Custom (manual) product fields: { field_name: value }. */
+  custom?: Record<string, string | number | boolean>;
+};
+
+export async function createProduct(
+  baseUrl: string,
+  payload: ProductInput,
+): Promise<{ id: number; name: string }> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/product/create`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { ...payload },
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not create the product.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  if (!r?.id) throw new Error('Could not create the product.');
+  return { id: r.id, name: r.name };
+}
+
+export async function saveProductBasics(
+  baseUrl: string,
+  tmplId: number,
+  payload: ProductInput,
+): Promise<boolean> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/product/basic/save`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { tmpl_id: tmplId, ...payload },
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not save the product.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return r?.ok === true;
 }

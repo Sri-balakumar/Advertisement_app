@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Seed the single settings record. -->
+    <record id="default_config" model="signage.config">
+        <field name="detail_value">8</field>
+        <field name="detail_unit">sec</field>
+        <field name="global_fields_mode" eval="False"/>
+    </record>
+
+    <record id="signage_config_form" model="ir.ui.view">
+        <field name="name">signage.config.form</field>
+        <field name="model">signage.config</field>
+        <field name="arch" type="xml">
+            <form string="Signage Settings" create="false" delete="false">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>Signage Settings</h1>
+                    </div>
+                    <group>
+                        <label for="detail_value" string="Detail display time"/>
+                        <div class="o_row">
+                            <field name="detail_value" class="oe_inline"/>
+                            <field name="detail_unit" class="oe_inline"/>
+                        </div>
+                        <field name="detail_seconds" readonly="1"/>
+                    </group>
+                    <p class="text-muted">
+                        How long a scanned product's details stay on screen before the banners come back.
+                        This is shared with the app (Manage → Scanner &amp; Display).
+                    </p>
+                    <group string="Global scan fields">
+                        <field name="global_fields_mode"/>
+                    </group>
+                    <p class="text-muted">
+                        When on, every scanned product shows the same fields chosen below,
+                        instead of each product's own scan-fields list.
+                    </p>
+                    <field name="global_field_ids" invisible="not global_fields_mode">
+                        <list editable="bottom">
+                            <field name="sequence" widget="handle"/>
+                            <field name="field_id"/>
+                            <field name="show" widget="boolean_toggle"/>
+                        </list>
+                    </field>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="signage_config_action" model="ir.actions.act_window">
+        <field name="name">Settings</field>
+        <field name="res_model">signage.config</field>
+        <field name="view_mode">form</field>
+        <field name="res_id" ref="default_config"/>
+        <field name="target">current</field>
+    </record>
+
+    <menuitem id="signage_config_menu" name="Settings"
+              parent="signage_menu_root"
+              action="signage_config_action" sequence="30"/>
+
+</odoo>

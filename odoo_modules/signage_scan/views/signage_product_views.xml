@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Per-product: master on/off + a show/hide toggle per field. -->
+    <record id="signage_product_form" model="ir.ui.view">
+        <field name="name">product.template.signage.form</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Price Checker" name="signage_price_checker">
+                    <field name="signage_global_on" invisible="1"/>
+                    <div class="alert alert-warning" role="alert" invisible="not signage_global_on">
+                        <i class="fa fa-info-circle me-1"/>
+                        <b>“Same fields for all products” is ON.</b> Every product shows the same global
+                        fields, so changes to this product's own fields below <b>won't appear on scan</b>
+                        until you turn Global off (Signage Scan → Settings).
+                    </div>
+                    <group>
+                        <field name="signage_enabled"/>
+                        <field name="signage_show_image"/>
+                    </group>
+                    <separator string="Fields to show on scan (toggle each on/off)"/>
+                    <field name="signage_field_line_ids">
+                        <list editable="bottom">
+                            <field name="sequence" widget="handle"/>
+                            <field name="field_id" options="{'no_create': True}"/>
+                            <field name="show" widget="boolean_toggle"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Clean, focused config form opened from Scan Fields (only the toggles). -->
+    <record id="signage_product_config_form" model="ir.ui.view">
+        <field name="name">product.template.signage.config.form</field>
+        <field name="model">product.template</field>
+        <field name="arch" type="xml">
+            <form string="Scan Config" create="false">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <field name="signage_global_on" invisible="1"/>
+                    <div class="alert alert-warning" role="alert" invisible="not signage_global_on">
+                        <i class="fa fa-info-circle me-1"/>
+                        <b>“Same fields for all products” is ON.</b> Every product shows the same global
+                        fields, so changes to this product's own fields below <b>won't appear on scan</b>
+                        until you turn Global off (Signage Scan → Settings).
+                    </div>
+                    <group>
+                        <field name="barcode" readonly="1"/>
+                        <field name="signage_enabled"/>
+                        <field name="signage_show_image"/>
+                    </group>
+                    <separator string="Fields to show on scan (toggle each on/off)"/>
+                    <field name="signage_field_line_ids">
+                        <list editable="bottom">
+                            <field name="sequence" widget="handle"/>
+                            <field name="field_id" options="{'no_create': True}"/>
+                            <field name="show" widget="boolean_toggle"/>
+                        </list>
+                    </field>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Scan Fields list: every product with an inline on/off toggle. -->
+    <record id="signage_product_list" model="ir.ui.view">
+        <field name="name">product.template.signage.list</field>
+        <field name="model">product.template</field>
+        <field name="arch" type="xml">
+            <list string="Scan Fields (per product)">
+                <field name="name"/>
+                <field name="barcode"/>
+                <field name="signage_enabled" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="signage_product_action" model="ir.actions.act_window">
+        <field name="name">Scan Fields</field>
+        <field name="res_model">product.template</field>
+        <field name="view_mode">list,form</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('signage_product_list')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('signage_product_config_form')})]"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No products found</p>
+            <p>Toggle a product on/off here, then open it and use the
+               <b>Price Checker</b> tab to choose which fields show on scan.</p>
+        </field>
+    </record>
+
+    <menuitem id="signage_product_menu" name="Scan Fields"
+              parent="signage_menu_root"
+              action="signage_product_action" sequence="20"/>
+
+</odoo>

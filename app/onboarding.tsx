@@ -16,14 +16,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Brand } from '@/constants/theme';
+import { Brand, Colors } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 const { width: W, height: H } = Dimensions.get('window');
-const BG = '#EBF1FC';
-const WAVE = '#DCE6FA';
-const NAVY = '#1e2a5a';
-const MUTED = '#5b6472';
 
 type Slide = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -34,26 +31,33 @@ type Slide = {
 
 const SLIDES: Slide[] = [
   {
-    icon: 'albums',
+    icon: 'tv',
     accent: '#4f46e5',
-    title: 'Ads that sell for you',
-    text: 'Images and videos scroll across your screens all day — your storefront, always on.',
+    title: 'Signage that never sleeps',
+    text: 'Images and videos play full-screen across your store screens all day — your storefront, always on.',
   },
   {
-    icon: 'qr-code',
+    icon: 'barcode',
     accent: '#7c3aed',
-    title: 'Scan to discover',
-    text: 'Every ad carries a QR. One scan opens the product, its live price and today’s offer.',
+    title: 'Scan for instant prices',
+    text: 'Show a product barcode to the camera or a USB scanner and its details and price appear at once.',
   },
   {
     icon: 'options',
-    accent: '#f43f5e',
-    title: 'All from one app',
-    text: 'Add ads, set what plays and where each QR leads — managed live. Built by Alphalize.',
+    accent: '#10b981',
+    title: 'You control what shows',
+    text: 'Manage banners and pick exactly which product fields appear on scan — all from this app. Built by Alphalize.',
   },
 ];
 
 export default function Onboarding() {
+  const scheme = useColorScheme() ?? 'light';
+  const c = Colors[scheme];
+  const dark = scheme === 'dark';
+  // Decorative bottom wave: a soft brand tint in light, a subtle violet glow in dark.
+  const waveColor = dark ? 'rgba(124,58,237,0.12)' : '#DCE6FA';
+  const dotIdle = dark ? 'rgba(255,255,255,0.22)' : 'rgba(30,42,90,0.22)';
+
   const ref = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
   const router = useRouter();
@@ -80,9 +84,9 @@ export default function Onboarding() {
   const last = index === SLIDES.length - 1;
 
   return (
-    <View style={{ flex: 1, backgroundColor: BG }}>
-      <StatusBar style="dark" />
-      <View style={styles.wave} />
+    <View style={{ flex: 1, backgroundColor: c.background }}>
+      <StatusBar style={dark ? 'light' : 'dark'} />
+      <View style={[styles.wave, { backgroundColor: waveColor }]} />
       <SafeAreaView style={{ flex: 1 }}>
         {/* Top bar: 369 logo centered, Skip on the right */}
         <View style={styles.topBar}>
@@ -93,7 +97,7 @@ export default function Onboarding() {
             style={styles.logo}
           />
           <Pressable style={[styles.side, styles.skip]} onPress={finish} hitSlop={10}>
-            <Text style={styles.skipText}>Skip</Text>
+            <Text style={[styles.skipText, { color: c.textMuted }]}>Skip</Text>
           </Pressable>
         </View>
 
@@ -110,8 +114,8 @@ export default function Onboarding() {
               <View style={[styles.iconWrap, { backgroundColor: item.accent + '1a', borderColor: item.accent + '33' }]}>
                 <Ionicons name={item.icon} size={64} color={item.accent} />
               </View>
-              <Text style={styles.title}>{item.title}</Text>
-              <Text style={styles.text}>{item.text}</Text>
+              <Text style={[styles.title, { color: c.text }]}>{item.title}</Text>
+              <Text style={[styles.text, { color: c.textMuted }]}>{item.text}</Text>
             </View>
           )}
         />
@@ -119,7 +123,14 @@ export default function Onboarding() {
         <View style={styles.footer}>
           <View style={styles.dots}>
             {SLIDES.map((s, i) => (
-              <View key={s.title} style={[styles.dot, i === index && styles.dotActive]} />
+              <View
+                key={s.title}
+                style={[
+                  styles.dot,
+                  { backgroundColor: dotIdle },
+                  i === index && [styles.dotActive, { backgroundColor: c.tint }],
+                ]}
+              />
             ))}
           </View>
           <Pressable onPress={next} style={styles.btnWrap}>
@@ -145,7 +156,6 @@ const styles = StyleSheet.create({
     left: -W * 0.3,
     right: -W * 0.3,
     height: H * 0.26,
-    backgroundColor: WAVE,
     borderTopLeftRadius: W * 0.9,
     borderTopRightRadius: W * 0.9,
   },
@@ -159,7 +169,7 @@ const styles = StyleSheet.create({
   side: { width: 56 },
   logo: { width: 116, height: 54 },
   skip: { alignItems: 'flex-end' },
-  skipText: { color: MUTED, fontSize: 15, fontWeight: '700' },
+  skipText: { fontSize: 15, fontWeight: '700' },
   slide: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36, gap: 8 },
   iconWrap: {
     width: 150,
@@ -170,12 +180,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 34,
   },
-  title: { color: NAVY, fontSize: 27, fontWeight: '900', textAlign: 'center' },
-  text: { color: MUTED, fontSize: 15, lineHeight: 22, textAlign: 'center', marginTop: 8 },
+  title: { fontSize: 27, fontWeight: '900', textAlign: 'center' },
+  text: { fontSize: 15, lineHeight: 22, textAlign: 'center', marginTop: 8 },
   footer: { paddingHorizontal: 28, paddingBottom: 12, gap: 22 },
   dots: { flexDirection: 'row', gap: 7, justifyContent: 'center' },
-  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(30,42,90,0.22)' },
-  dotActive: { width: 22, backgroundColor: '#4f46e5' },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  dotActive: { width: 22 },
   btnWrap: { borderRadius: 16, overflow: 'hidden' },
   btn: {
     height: 56,

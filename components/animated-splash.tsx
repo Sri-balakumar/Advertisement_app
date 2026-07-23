@@ -11,17 +11,17 @@ const NAVY = '#1e2a5a';
 
 type Card = { icon: keyof typeof Ionicons.glyphMap; color: string; x: number; y: number };
 
-// Floating "what the app does" chips: an ad, a QR, a price tag, a carousel.
+// Floating "what the app does" chips: signage, barcode scan, price, banners.
 const CARDS: Card[] = [
-  { icon: 'megaphone', color: '#4f46e5', x: 0.12, y: 0.16 },
-  { icon: 'qr-code', color: '#7c3aed', x: 0.74, y: 0.2 },
+  { icon: 'tv', color: '#4f46e5', x: 0.12, y: 0.16 },
+  { icon: 'barcode', color: '#7c3aed', x: 0.74, y: 0.2 },
   { icon: 'pricetags', color: '#f43f5e', x: 0.15, y: 0.66 },
-  { icon: 'albums', color: '#06b6d4', x: 0.72, y: 0.64 },
+  { icon: 'images', color: '#06b6d4', x: 0.72, y: 0.64 },
 ];
 
 /**
  * Branded launch overlay — the "369 light intro". A light background, the 369
- * logo scaling in, drifting ad/QR/price chips, a "Scroll · Scan · Save"
+ * logo scaling in, drifting signage/scan/price chips, a "Display · Scan · Price"
  * headline over a soft wave, and the Alphalize wordmark; then a smooth fade-out.
  */
 export function AnimatedSplash({ onDone }: { onDone: () => void }) {
@@ -103,7 +103,7 @@ export function AnimatedSplash({ onDone }: { onDone: () => void }) {
         />
         <Animated.View
           style={{ alignItems: 'center', opacity: up, transform: [{ translateY: rise }] }}>
-          <Text style={styles.headline}>Scroll · Scan · Save</Text>
+          <Text style={styles.headline}>Display · Scan · Price</Text>
           <View style={styles.underline} />
         </Animated.View>
       </View>

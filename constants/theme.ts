@@ -58,11 +58,22 @@ export const Gradients: [string, string][] = [
   ['#f59e0b', '#ef4444'],
 ];
 
+/** One typographic scale used across the app (clean/minimal system). */
+export const Type = {
+  h1: { fontSize: 22, fontWeight: '800' as const, letterSpacing: -0.3 },
+  h2: { fontSize: 19, fontWeight: '800' as const, letterSpacing: -0.2 },
+  title: { fontSize: 16.5, fontWeight: '700' as const },
+  body: { fontSize: 15, fontWeight: '500' as const },
+  label: { fontSize: 13, fontWeight: '600' as const },
+  caption: { fontSize: 12.5, fontWeight: '500' as const },
+  section: { fontSize: 12, fontWeight: '800' as const, letterSpacing: 1 },
+} as const;
+
 export const Radius = {
   sm: 10,
-  md: 16,
-  lg: 22,
-  xl: 28,
+  md: 14,
+  lg: 18,
+  xl: 26,
   pill: 999,
 } as const;
 
