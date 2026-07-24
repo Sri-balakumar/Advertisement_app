@@ -133,7 +133,7 @@ export default function LoginScreen() {
             </View>
 
             <Text style={[styles.h1, { color: c.text }]}>Welcome back</Text>
-            <Text style={[styles.h2, { color: c.textMuted }]}>Sign in to your Odoo account</Text>
+            <Text style={[styles.h2, { color: c.textMuted }]}>Sign in to your account</Text>
 
             {/* Card */}
             <View style={[styles.card, Shadow.soft, { backgroundColor: c.card, borderColor: c.border }]}>

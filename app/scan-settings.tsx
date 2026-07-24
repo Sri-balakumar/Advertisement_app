@@ -117,8 +117,8 @@ export default function ScanSettingsScreen() {
           </View>
         </Card>
         <Text style={[Type.caption, { color: c.textMuted, marginTop: 10, marginLeft: 4 }]}>
-          = {seconds} second{seconds === 1 ? '' : 's'} on screen after a scan. Shared with Odoo →
-          Signage Scan → Settings.
+          = {seconds} second{seconds === 1 ? '' : 's'} on screen after a scan. Applies to all display
+          devices.
         </Text>
       </ScrollView>
     </Screen>

@@ -21,7 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header, Loading, Screen, useC } from '@/components/ui';
 import { Brand, Colors, Radius } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
-import { BannerSave, getBannerDetail, saveBanner } from '@/services/odoo';
+import { BannerSave, deleteBanner, getBannerDetail, saveBanner } from '@/services/odoo';
 
 type Media = 'image' | 'video';
 type Dur = 'auto' | 'custom';
@@ -55,6 +55,7 @@ export default function BannerFormScreen() {
   const [pick, setPick] = useState<null | 'start' | 'end'>(null);
 
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -158,6 +159,28 @@ export default function BannerFormScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const remove = () => {
+    Alert.alert('Delete banner', `Delete “${name || 'this banner'}”? This cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setDeleting(true);
+          setError('');
+          try {
+            await deleteBanner(base, bannerId);
+            router.back();
+          } catch (e: any) {
+            setError(e?.message || 'Could not delete the banner.');
+          } finally {
+            setDeleting(false);
+          }
+        },
+      },
+    ]);
   };
 
   if (loading) {
@@ -303,6 +326,22 @@ export default function BannerFormScreen() {
           />
         ) : null}
 
+        {editing ? (
+          <Pressable
+            onPress={remove}
+            disabled={deleting || saving}
+            style={[styles.deleteBtn, { borderColor: Brand.rose }, deleting && { opacity: 0.6 }]}>
+            {deleting ? (
+              <ActivityIndicator color={Brand.rose} />
+            ) : (
+              <>
+                <Ionicons name="trash-outline" size={18} color={Brand.rose} />
+                <Text style={[styles.deleteBtnText, { color: Brand.rose }]}>Delete Banner</Text>
+              </>
+            )}
+          </Pressable>
+        ) : null}
+
         {error ? <Text style={[styles.err, { color: Brand.rose }]}>{error}</Text> : null}
       </ScrollView>
 
@@ -398,4 +437,15 @@ const styles = StyleSheet.create({
   saveBar: { position: 'absolute', bottom: 0, left: 0, right: 0, borderTopWidth: 1, paddingHorizontal: 16, paddingTop: 10 },
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 50, borderRadius: Radius.md },
   saveText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  deleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 50,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    marginTop: 20,
+  },
+  deleteBtnText: { fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
 });

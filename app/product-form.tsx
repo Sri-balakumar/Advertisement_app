@@ -27,6 +27,7 @@ import { useAuth } from '@/context/auth';
 import {
   createProduct,
   CustomField,
+  deleteProduct,
   getCategories,
   getProductBasics,
   getRelationRecords,
@@ -80,6 +81,7 @@ export default function ProductFormScreen() {
   const [permission, requestPermission] = useCameraPermissions();
 
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -177,6 +179,28 @@ export default function ProductFormScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const remove = () => {
+    Alert.alert('Delete product', `Delete “${name || 'this product'}”? This cannot be undone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setDeleting(true);
+          setError('');
+          try {
+            await deleteProduct(base, tmplId);
+            router.back();
+          } catch (e: any) {
+            setError(e?.message || 'Could not delete the product.');
+          } finally {
+            setDeleting(false);
+          }
+        },
+      },
+    ]);
   };
 
   const setCF = (nameKey: string, patch: Partial<CustomField>) =>
@@ -319,6 +343,22 @@ export default function ProductFormScreen() {
               </>
             )}
           </Pressable>
+
+          {editing ? (
+            <Pressable
+              onPress={remove}
+              disabled={deleting || saving}
+              style={[styles.deleteBtn, { borderColor: Brand.rose }, deleting && { opacity: 0.6 }]}>
+              {deleting ? (
+                <ActivityIndicator color={Brand.rose} />
+              ) : (
+                <>
+                  <Ionicons name="trash-outline" size={18} color={Brand.rose} />
+                  <Text style={[styles.deleteBtnText, { color: Brand.rose }]}>Delete Product</Text>
+                </>
+              )}
+            </Pressable>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -676,6 +716,18 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 0.3 },
+  deleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: Radius.md,
+    height: 50,
+    marginTop: 12,
+    borderWidth: 1.5,
+    backgroundColor: 'transparent',
+  },
+  deleteBtnText: { fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
   // category modal
   modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalCard: { width: '100%', maxWidth: 440, maxHeight: '80%', borderRadius: 22, padding: 16 },

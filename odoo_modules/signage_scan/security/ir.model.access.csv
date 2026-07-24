@@ -7,3 +7,5 @@ access_signage_config_user,signage.config.user,model_signage_config,base.group_u
 access_signage_config_manager,signage.config.manager,model_signage_config,base.group_system,1,1,1,1
 access_signage_config_field_user,signage.config.field.user,model_signage_config_field,base.group_user,1,0,0,0
 access_signage_config_field_manager,signage.config.field.manager,model_signage_config_field,base.group_system,1,1,1,1
+access_signage_scan_log_user,signage.scan.log.user,model_signage_scan_log,base.group_user,1,0,0,0
+access_signage_scan_log_manager,signage.scan.log.manager,model_signage_scan_log,base.group_system,1,1,1,1

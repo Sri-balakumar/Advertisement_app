@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import timedelta
 
 from odoo import fields, http
 from odoo.exceptions import UserError, ValidationError
@@ -130,6 +131,7 @@ class SignageController(http.Controller):
             _logger.info("[signage.lookup] NO product for %r "
                          "(variant matches=%s, template matches=%s) → not found",
                          code, any_v, any_t)
+            self._log_scan(code, 'not_found')
             return {'found': False}
 
         tmpl = product.product_tmpl_id
@@ -138,6 +140,7 @@ class SignageController(http.Controller):
             _logger.info("[signage.lookup] product %s %r has 'Show on scan' OFF "
                          "(signage_enabled=False) → not found",
                          product.id, product.display_name)
+            self._log_scan(code, 'disabled', product)
             return {'found': False}
         _logger.info("[signage.lookup] FOUND product %s %r (barcode=%r)",
                      product.id, product.display_name, product.barcode)
@@ -168,7 +171,33 @@ class SignageController(http.Controller):
             # Nothing configured yet → a sensible default: the sales price.
             rows.append({'label': 'Price', 'value': '%s%.2f' % (sym, product.list_price)})
         res['rows'] = rows
+        self._log_scan(code, 'found', product)
         return res
+
+    def _log_scan(self, code, state, product=None):
+        """Record one scan in signage.scan.log (via sudo() so store devices that
+        aren't managers still log). Deduped: a repeat of the same barcode by the
+        same user within 5s is skipped, so a barcode held in front of the camera
+        doesn't spam rows."""
+        try:
+            code = (code or '').strip()
+            if not code:
+                return
+            Log = request.env['signage.scan.log'].sudo()
+            recent = fields.Datetime.now() - timedelta(seconds=5)
+            dup = Log.search([('barcode', '=', code),
+                              ('user_id', '=', request.env.user.id),
+                              ('scan_date', '>=', recent)], limit=1)
+            if dup:
+                return
+            Log.create({
+                'barcode': code,
+                'state': state,
+                'product_id': product.id if product else False,
+                'product_name': product.display_name if product else False,
+            })
+        except Exception:  # logging must never break a scan
+            _logger.exception("[signage.lookup] could not record scan %r", code)
 
     # ---- App-side management (managers only) ------------------------------
 
@@ -692,3 +721,65 @@ class SignageController(http.Controller):
         except Exception:  # noqa: BLE001
             return {'records': []}
         return {'records': [{'id': r[0], 'name': r[1]} for r in results]}
+
+    # ---- Scan history log -------------------------------------------------
+
+    @http.route('/signage/scan_log', type='jsonrpc', auth='user', methods=['POST'])
+    def signage_scan_log(self, limit=200, **kw):
+        """Recent scans for the app's Scan History screen. Admins only."""
+        if not self._is_manager():
+            return {'error': 'Not allowed'}
+        rows = request.env['signage.scan.log'].sudo().search(
+            [], limit=min(int(limit or 200), 500))
+        return {'records': [{
+            'id': r.id,
+            'barcode': r.barcode or '',
+            'product_name': r.product_name or '',
+            'state': r.state,
+            'scan_date': (r.scan_date.isoformat() + 'Z') if r.scan_date else '',
+            'user_name': r.user_id.name if r.user_id else '',
+        } for r in rows]}
+
+    @http.route('/signage/scan_log/clear', type='jsonrpc', auth='user', methods=['POST'])
+    def signage_scan_log_clear(self, **kw):
+        """Wipe the scan history. Admins only."""
+        if not self._is_manager():
+            return {'error': 'Not allowed'}
+        request.env['signage.scan.log'].sudo().search([]).unlink()
+        return {'ok': True}
+
+    # ---- Delete product / banner ------------------------------------------
+
+    @http.route('/signage/product/delete', type='jsonrpc', auth='user', methods=['POST'])
+    def signage_product_delete(self, tmpl_id=None, **kw):
+        """Delete a product from the app. Admins only. Hard delete can fail when
+        the product is referenced elsewhere (orders, moves) → friendly error."""
+        if not self._is_manager():
+            return {'error': 'Not allowed'}
+        p = request.env['product.template'].sudo().browse(int(tmpl_id)) if tmpl_id else None
+        if not p or not p.exists():
+            return {'error': 'Product not found'}
+        try:
+            p.unlink()
+        except (ValidationError, UserError) as exc:
+            return {'error': exc.args[0] if exc.args else 'Could not delete the product.'}
+        except Exception:  # noqa: BLE001
+            return {'error': 'Could not delete — it may be used elsewhere.'}
+        return {'ok': True}
+
+    @http.route('/signage/banner/delete', type='jsonrpc', auth='user', methods=['POST'])
+    def signage_banner_delete(self, banner_id=None, **kw):
+        """Delete a banner from the app. Admins only."""
+        if not self._is_manager():
+            return {'error': 'Not allowed'}
+        b = request.env['signage.banner'].sudo().with_context(
+            active_test=False).browse(int(banner_id)) if banner_id else None
+        if not b or not b.exists():
+            return {'error': 'Banner not found'}
+        try:
+            b.unlink()
+        except (ValidationError, UserError) as exc:
+            return {'error': exc.args[0] if exc.args else 'Could not delete the banner.'}
+        except Exception:  # noqa: BLE001
+            return {'error': 'Could not delete the banner.'}
+        return {'ok': True}

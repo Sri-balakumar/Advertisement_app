@@ -109,6 +109,7 @@ function RootNavigator() {
         <Stack.Screen name="banner-form" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="products" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="product-form" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="scan-history" options={{ animation: 'slide_from_right' }} />
       </Stack>
       {!ready && <AnimatedSplash onDone={() => setSplashDone(true)} />}
     </>

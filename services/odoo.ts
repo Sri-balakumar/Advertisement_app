@@ -1038,3 +1038,76 @@ export async function saveProductBasics(
   if (r?.error) throw new Error(r.error);
   return r?.ok === true;
 }
+
+/** Delete a product. Throws a friendly message if it can't be removed. */
+export async function deleteProduct(baseUrl: string, tmplId: number): Promise<boolean> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/product/delete`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { tmpl_id: tmplId },
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not delete the product.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return r?.ok === true;
+}
+
+/** Delete a banner. */
+export async function deleteBanner(baseUrl: string, bannerId: number): Promise<boolean> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/banner/delete`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { banner_id: bannerId },
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not delete the banner.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return r?.ok === true;
+}
+
+// ---- Scan history (admins only) ------------------------------------------
+
+/** One recorded scan. `scan_date` is an ISO-8601 UTC string. */
+export type ScanLogItem = {
+  id: number;
+  barcode: string;
+  product_name: string;
+  state: 'found' | 'not_found' | 'disabled' | string;
+  scan_date: string;
+  user_name: string;
+};
+
+/** Recent scans (newest first) for the Scan History screen. */
+export async function getScanLog(baseUrl: string): Promise<ScanLogItem[]> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/scan_log`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: {},
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not load scan history.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return Array.isArray(r?.records)
+    ? r.records.map((x: any) => ({
+        id: x.id,
+        barcode: x.barcode || '',
+        product_name: x.product_name || '',
+        state: x.state || 'not_found',
+        scan_date: x.scan_date || '',
+        user_name: x.user_name || '',
+      }))
+    : [];
+}
+
+/** Wipe the scan history. */
+export async function clearScanLog(baseUrl: string): Promise<boolean> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/scan_log/clear`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: {},
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not clear history.'));
+  const r = data?.result;
+  if (r?.error) throw new Error(r.error);
+  return r?.ok === true;
+}

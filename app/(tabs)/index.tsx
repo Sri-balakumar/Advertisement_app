@@ -20,6 +20,7 @@ import {
   NativeSyntheticEvent,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -34,6 +35,7 @@ import { getSignageBanners, lookupProduct, ProductLookup, SignageBanner } from '
 import { getScanMode, ScanMode } from '@/services/scanSettings';
 
 const W = Dimensions.get('window').width;
+const H = Dimensions.get('window').height;
 const DEFAULT_SECONDS = 6;
 const CONTROLS_HIDE_MS = 3500;
 
@@ -157,6 +159,7 @@ export default function SignageScreen() {
 
   const [banners, setBanners] = useState<SignageBanner[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [index, setIndex] = useState(0);
   const [slideH, setSlideH] = useState(0);
   const listRef = useRef<FlatList<SignageBanner>>(null);
@@ -196,12 +199,16 @@ export default function SignageScreen() {
       setLoading(false);
       return;
     }
+    setError('');
     try {
       setBanners(await getSignageBanners(base));
       setIndex(0);
       listRef.current?.scrollToOffset({ offset: 0, animated: false });
-    } catch {
-      // ignore — empty state / refresh
+    } catch (e: any) {
+      // Surface a real error so a wrong URL / dropped Wi-Fi doesn't masquerade
+      // as "No banners yet". Keep any banners already on screen (only blank when
+      // there was nothing loaded yet).
+      setError(e?.message || 'Cannot reach the server.');
     } finally {
       setLoading(false);
     }
@@ -362,8 +369,11 @@ export default function SignageScreen() {
   // Auto-hide the bottom tab bar while Home is focused (full-screen signage);
   // tapping reveals the controls → shows it again; leaving Home restores it.
   useEffect(() => {
-    setHidden(isFocused && !controlsVisible);
-  }, [isFocused, controlsVisible, setHidden]);
+    // Only go full-screen (hide the tab bar) when there are banners to show.
+    // With no banners the screen is empty, so keep the tab bar visible so the
+    // user can still reach Profile → Logout.
+    setHidden(isFocused && !controlsVisible && banners.length > 0);
+  }, [isFocused, controlsVisible, banners.length, setHidden]);
   useEffect(() => () => setHidden(false), [setHidden]);
 
   // Fade the top bar / scan bar / controls together with the reveal state.
@@ -478,11 +488,21 @@ export default function SignageScreen() {
           <ActivityIndicator color="#fff" size="large" />
           <Text style={styles.dim}>Loading…</Text>
         </View>
+      ) : error && banners.length === 0 ? (
+        <View style={styles.center}>
+          <Ionicons name="cloud-offline-outline" size={54} color="#4b4b57" />
+          <Text style={styles.stateTitle}>Can’t reach server</Text>
+          <Text style={styles.dim}>{error}</Text>
+          <Pressable style={styles.retry} onPress={load}>
+            <Ionicons name="refresh" size={16} color="#fff" />
+            <Text style={styles.retryText}>Retry</Text>
+          </Pressable>
+        </View>
       ) : banners.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="tv-outline" size={54} color="#4b4b57" />
           <Text style={styles.stateTitle}>No banners yet</Text>
-          <Text style={styles.dim}>Add banners in Odoo → Signage Scan → Banners, then refresh.</Text>
+          <Text style={styles.dim}>Add banners from Manage → Banners, then refresh.</Text>
           <Pressable style={styles.retry} onPress={load}>
             <Ionicons name="refresh" size={16} color="#fff" />
             <Text style={styles.retryText}>Refresh</Text>
@@ -607,48 +627,60 @@ export default function SignageScreen() {
       ) : null}
 
       {/* Product detail */}
-      {result ? (
-        <Pressable style={styles.overlay} onPress={dismiss}>
-          <Animated.View style={[styles.popWrap, { opacity: pop, transform: [{ scale: popScale }] }]}>
-          <Pressable style={styles.detailCard} onPress={() => {}}>
-            <View style={styles.detailImgWrap}>
-              {result.image ? (
-                <Image source={{ uri: result.image }} style={styles.detailImg} resizeMode="contain" />
-              ) : (
-                <View style={[styles.detailImg, styles.detailImgEmpty]}>
-                  <Ionicons name="cube-outline" size={44} color="#c3c7d0" />
-                </View>
-              )}
-              <View style={styles.foundBadge}>
-                <Ionicons name="checkmark" size={15} color="#fff" />
-              </View>
-            </View>
-            <Text style={styles.detailName}>{result.name}</Text>
-            {result.rows.length ? (
-              <>
-                <Text style={styles.detailHeadValue} numberOfLines={1}>
-                  {result.rows[0].value}
-                </Text>
-                <Text style={styles.detailHeadLabel}>{result.rows[0].label}</Text>
-                {result.rows.length > 1 ? (
-                  <View style={styles.rows}>
-                    {result.rows.slice(1).map((r, i) => (
-                      <View key={`${r.label}-${i}`} style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>{r.label}</Text>
-                        <Text style={styles.detailValue}>{r.value}</Text>
+      {result
+        ? (() => {
+            // Drop fields with no value so empty rows (e.g. blank Sales Description)
+            // never show. Price is always present, so it stays the head value.
+            const detailRows = result.rows.filter((r) => String(r.value ?? '').trim() !== '');
+            return (
+              <Pressable style={styles.overlay} onPress={dismiss}>
+                <Animated.View style={[styles.popWrap, { opacity: pop, transform: [{ scale: popScale }] }]}>
+                  <Pressable style={[styles.detailCard, { maxHeight: H * 0.82 }]} onPress={() => {}}>
+                    <View style={styles.detailImgWrap}>
+                      {result.image ? (
+                        <Image source={{ uri: result.image }} style={styles.detailImg} resizeMode="contain" />
+                      ) : (
+                        <View style={[styles.detailImg, styles.detailImgEmpty]}>
+                          <Ionicons name="cube-outline" size={44} color="#c3c7d0" />
+                        </View>
+                      )}
+                      <View style={styles.foundBadge}>
+                        <Ionicons name="checkmark" size={15} color="#fff" />
                       </View>
-                    ))}
-                  </View>
-                ) : null}
-              </>
-            ) : null}
-            <Pressable onPress={dismiss} style={styles.detailClose}>
-              <Text style={styles.detailCloseText}>Close</Text>
-            </Pressable>
-          </Pressable>
-          </Animated.View>
-        </Pressable>
-      ) : null}
+                    </View>
+                    <Text style={styles.detailName}>{result.name}</Text>
+                    {detailRows.length ? (
+                      <>
+                        <Text style={styles.detailHeadValue} numberOfLines={1}>
+                          {detailRows[0].value}
+                        </Text>
+                        <Text style={styles.detailHeadLabel}>{detailRows[0].label}</Text>
+                        {detailRows.length > 1 ? (
+                          <ScrollView
+                            style={styles.rowsScroll}
+                            contentContainerStyle={styles.rows}
+                            showsVerticalScrollIndicator
+                            keyboardShouldPersistTaps="handled"
+                          >
+                            {detailRows.slice(1).map((r, i) => (
+                              <View key={`${r.label}-${i}`} style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>{r.label}</Text>
+                                <Text style={styles.detailValue}>{r.value}</Text>
+                              </View>
+                            ))}
+                          </ScrollView>
+                        ) : null}
+                      </>
+                    ) : null}
+                    <Pressable onPress={dismiss} style={styles.detailClose}>
+                      <Text style={styles.detailCloseText}>Close</Text>
+                    </Pressable>
+                  </Pressable>
+                </Animated.View>
+              </Pressable>
+            );
+          })()
+        : null}
 
       {/* Not found */}
       {notFound ? (
@@ -899,7 +931,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
-  rows: { alignSelf: 'stretch', marginTop: 16 },
+  rowsScroll: { alignSelf: 'stretch', flexShrink: 1, marginTop: 16 },
+  rows: { alignSelf: 'stretch' },
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

@@ -12,7 +12,7 @@ type Entry = {
   title: string;
   subtitle: string;
   icon: keyof typeof Ionicons.glyphMap;
-  route: '/products' | '/banners' | '/scan-fields' | '/scan-settings';
+  route: '/products' | '/banners' | '/scan-fields' | '/scan-settings' | '/scan-history';
   tint: string;
 };
 
@@ -21,6 +21,7 @@ const ENTRIES: Entry[] = [
   { title: 'Banners', subtitle: 'Image & video banners shown full-screen', icon: 'images-outline', route: '/banners', tint: '#4f46e5' },
   { title: 'Scan Fields', subtitle: 'Per-product: show on scan + which fields appear', icon: 'pricetags-outline', route: '/scan-fields', tint: '#0ea5e9' },
   { title: 'Scanner & Display', subtitle: 'Scan method (Auto / USB / camera) + detail time', icon: 'options-outline', route: '/scan-settings', tint: '#10b981' },
+  { title: 'Scan History', subtitle: 'Recent scans & missing barcodes', icon: 'time-outline', route: '/scan-history', tint: '#8b5cf6' },
 ];
 
 export default function ManageScreen() {
