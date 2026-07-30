@@ -1,13 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Brand, Colors, Radius, Shadow } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { ThemePref, useThemePreference } from '@/context/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
+/** Aspect ratio of nexgenn-pos.png (1065×234). */
+const LOGO_RATIO = 1065 / 234;
 
 const THEME_OPTS: { key: ThemePref; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: 'system', label: 'System', icon: 'phone-portrait-outline' },
@@ -23,6 +36,8 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user, canManage, signOut } = useAuth();
   const { pref, setPref } = useThemePreference();
+  const { width: winW } = useWindowDimensions();
+  const logoW = Math.min(Math.max(winW * 0.5, 190), 340);
 
   const displayName = user?.name || user?.username || 'Guest';
   const subtitle = user ? `${user.username ?? user.name ?? ''} · ${user.odoo_db}` : 'Not signed in';
@@ -116,18 +131,16 @@ export default function ProfileScreen() {
           />
         </View>
 
-        {/* About */}
-        <Text style={[styles.sectionLabel, { color: c.textMuted }]}>ABOUT</Text>
-        <View style={[styles.group, Shadow.soft, { backgroundColor: c.card, borderColor: c.border }]}>
-          <View style={styles.about}>
-            <Text style={[styles.aboutTitle, { color: c.text }]}>369 Advertisement</Text>
-            <Text style={[styles.aboutText, { color: c.textMuted }]}>
-              In-store signage display + barcode price-checker. Built by Alphalize.
-            </Text>
-          </View>
+        {/* Brand mark — white chip in dark mode so the black wordmark reads */}
+        <View style={[styles.brandWrap, scheme === 'dark' && styles.brandChipDark]}>
+          <Image
+            source={require('../../assets/images/nexgenn-pos.png')}
+            style={{ width: logoW, height: Math.round(logoW / LOGO_RATIO) }}
+            resizeMode="contain"
+          />
         </View>
 
-        <Text style={[styles.version, { color: c.textMuted }]}>369 Advertisement · v1.0.0</Text>
+        <Text style={[styles.version, { color: c.textMuted }]}>Powered by 369ai  |  v{APP_VERSION}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -236,8 +249,12 @@ const styles = StyleSheet.create({
   rowIcon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   rowLabel: { flex: 1, fontSize: 15.5, fontWeight: '700' },
   divider: { height: 1, marginLeft: 62 },
-  about: { padding: 16 },
-  aboutTitle: { fontSize: 15.5, fontWeight: '800' },
-  aboutText: { fontSize: 13, marginTop: 5, lineHeight: 19 },
-  version: { textAlign: 'center', fontSize: 12, marginTop: 24 },
+  brandWrap: { alignSelf: 'center', marginTop: 28 },
+  brandChipDark: {
+    backgroundColor: '#fff',
+    borderRadius: Radius.md,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+  },
+  version: { textAlign: 'center', fontSize: 12, marginTop: 12 },
 });

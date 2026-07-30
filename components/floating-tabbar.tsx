@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -52,7 +51,6 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
             const color = focused ? activeColor : inactiveColor;
             const icon = ICONS[route.name] ?? ['ellipse', 'ellipse-outline'];
             const onPress = () => {
-              Haptics.selectionAsync().catch(() => {});
               const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
               if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
             };

@@ -3,7 +3,6 @@
  * so every screen looks like part of the same official app.
  */
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ReactNode } from 'react';
 import {
@@ -122,12 +121,10 @@ export function Card({
   children,
   onPress,
   style,
-  haptic = true,
 }: {
   children: ReactNode;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
-  haptic?: boolean;
 }) {
   const c = useC();
   if (!onPress) {
@@ -135,10 +132,7 @@ export function Card({
   }
   return (
     <Pressable
-      onPress={() => {
-        if (haptic) Haptics.selectionAsync().catch(() => {});
-        onPress();
-      }}
+      onPress={onPress}
       style={({ pressed }) => [
         styles.card,
         { backgroundColor: c.card, borderColor: c.border },

@@ -1,10 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import { Card, EmptyState, Header, HeaderIcon, Screen, Skeleton, useC } from '@/components/ui';
-import { Radius, Type } from '@/constants/theme';
+import { Brand, Radius, Shadow, Type } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { clearScanLog, getScanLog, ScanLogItem } from '@/services/odoo';
 
@@ -40,6 +49,9 @@ export default function ScanHistoryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [notFoundOnly, setNotFoundOnly] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState('');
 
   const load = useCallback(async () => {
     if (!base) {
@@ -75,28 +87,30 @@ export default function ScanHistoryScreen() {
   const missingCount = useMemo(() => items.filter((i) => i.state === 'not_found').length, [items]);
 
   const confirmClear = () => {
-    Alert.alert('Clear scan history', 'Remove all recorded scans? This cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clear',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await clearScanLog(base);
-            setItems([]);
-          } catch (e: any) {
-            Alert.alert('Could not clear', e?.message || 'Please try again.');
-          }
-        },
-      },
-    ]);
+    if (!items.length) return;
+    setClearError('');
+    setConfirmOpen(true);
+  };
+
+  const doClear = async () => {
+    setClearing(true);
+    setClearError('');
+    try {
+      await clearScanLog(base);
+      setItems([]);
+      setConfirmOpen(false);
+    } catch (e: any) {
+      setClearError(e?.message || 'Please try again.');
+    } finally {
+      setClearing(false);
+    }
   };
 
   const renderItem = ({ item }: { item: ScanLogItem }) => {
     const meta = STATE_META[item.state] || STATE_META.not_found;
     const title = item.product_name || item.barcode || '—';
     return (
-      <Card haptic={false} style={styles.row}>
+      <Card style={styles.row}>
         <View style={[styles.chip, { backgroundColor: meta.bg }]}>
           <Text style={[styles.chipText, { color: meta.tint }]}>{meta.label}</Text>
         </View>
@@ -177,6 +191,69 @@ export default function ScanHistoryScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.tint} colors={[c.tint]} />}
         />
       )}
+
+      {/* Clear confirmation — an in-app card instead of a native Alert, so it
+          matches the app's styling and works the same on every platform. */}
+      <Modal
+        visible={confirmOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => (clearing ? null : setConfirmOpen(false))}>
+        <Pressable
+          style={styles.backdrop}
+          onPress={() => {
+            if (!clearing) setConfirmOpen(false);
+          }}>
+          <Pressable
+            style={[styles.confirmCard, Shadow.card, { backgroundColor: c.card }]}
+            onPress={() => {}}>
+            <View style={styles.confirmIcon}>
+              <Ionicons name="trash-outline" size={26} color={Brand.rose} />
+            </View>
+
+            <Text style={[styles.confirmTitle, { color: c.text }]}>Clear scan history?</Text>
+            <Text style={[styles.confirmBody, { color: c.textMuted }]}>
+              This removes all {items.length} recorded scan{items.length === 1 ? '' : 's'}
+              {missingCount ? `, including ${missingCount} missing barcode${missingCount === 1 ? '' : 's'}` : ''}.
+              This can’t be undone.
+            </Text>
+
+            {clearError ? (
+              <View style={styles.confirmErr}>
+                <Ionicons name="alert-circle" size={15} color={Brand.rose} />
+                <Text style={[styles.confirmErrText, { color: Brand.rose }]}>{clearError}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.confirmBtns}>
+              <Pressable
+                disabled={clearing}
+                onPress={() => setConfirmOpen(false)}
+                style={({ pressed }) => [
+                  styles.confirmBtn,
+                  { borderColor: c.border, backgroundColor: c.background },
+                  pressed && { opacity: 0.7 },
+                ]}>
+                <Text style={{ color: c.text, fontWeight: '800' }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                disabled={clearing}
+                onPress={doClear}
+                style={({ pressed }) => [
+                  styles.confirmBtn,
+                  { backgroundColor: Brand.rose, borderColor: Brand.rose },
+                  (pressed || clearing) && { opacity: 0.75 },
+                ]}>
+                {clearing ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={{ color: '#fff', fontWeight: '800' }}>Clear all</Text>
+                )}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }
@@ -202,4 +279,39 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10 },
   chip: { paddingHorizontal: 10, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   chipText: { fontSize: 11, fontWeight: '800' },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 28,
+  },
+  confirmCard: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: Radius.xl,
+    padding: 22,
+    alignItems: 'center',
+  },
+  confirmIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 20,
+    backgroundColor: 'rgba(244,63,94,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmTitle: { fontSize: 19, fontWeight: '900', marginTop: 14, textAlign: 'center' },
+  confirmBody: { fontSize: 14, lineHeight: 20, marginTop: 8, textAlign: 'center' },
+  confirmErr: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
+  confirmErrText: { fontSize: 12.5, fontWeight: '600', flexShrink: 1 },
+  confirmBtns: { flexDirection: 'row', gap: 10, marginTop: 20, alignSelf: 'stretch' },
+  confirmBtn: {
+    flex: 1,
+    height: 48,
+    borderRadius: Radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

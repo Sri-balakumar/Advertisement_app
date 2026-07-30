@@ -1,4 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { ComponentProps, useEffect, useState } from 'react';
 import {
@@ -12,6 +14,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,9 +26,16 @@ import { useThemePreference } from '@/context/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { authenticate, listDatabases } from '@/services/odoo';
 
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
+/** Aspect ratio of nexgenn-pos.png (1065×234). */
+const LOGO_RATIO = 1065 / 234;
+
 export default function LoginScreen() {
   const scheme = useColorScheme() ?? 'light';
   const c = Colors[scheme];
+  const { width: winW } = useWindowDimensions();
+  // Fill most of the width on phones, capped so it stays sane on a tablet.
+  const logoW = Math.min(Math.max(winW * 0.66, 240), 460);
   const router = useRouter();
   const { signIn } = useAuth();
   const { setPref } = useThemePreference();
@@ -42,6 +52,41 @@ export default function LoginScreen() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  /** Gate the "save what you typed" effect until the stored values are loaded. */
+  const [hydrated, setHydrated] = useState(false);
+
+  // Restore the last server + database so they survive logout and failed logins.
+  useEffect(() => {
+    (async () => {
+      try {
+        const [savedUrl, savedDb] = await Promise.all([
+          AsyncStorage.getItem('odoo_base_url'),
+          AsyncStorage.getItem('odoo_db'),
+        ]);
+        if (savedUrl) setBaseUrl(savedUrl);
+        if (savedDb) setDb(savedDb);
+      } catch {
+        // ignore — start with empty fields
+      } finally {
+        setHydrated(true);
+      }
+    })();
+  }, []);
+
+  // Remember the URL/database as they're entered, so a failed attempt doesn't lose them.
+  useEffect(() => {
+    if (!hydrated) return;
+    const u = baseUrl.trim();
+    if (!u) return;
+    AsyncStorage.setItem('odoo_base_url', u).catch(() => {});
+  }, [baseUrl, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const d = db.trim();
+    if (!d) return;
+    AsyncStorage.setItem('odoo_db', d).catch(() => {});
+  }, [db, hydrated]);
 
   // Debounced database discovery as the user types the server URL. A `cancelled`
   // flag makes sure a superseded (slow, out-of-order) response can't overwrite a
@@ -66,6 +111,10 @@ export default function LoginScreen() {
           setDbError('No databases found on this server. Check the URL.');
         } else if (list.length === 1) {
           setDb(list[0]);
+        } else {
+          // Drop a restored database this server doesn't offer — the field is
+          // dropdown-only, so it must never hold an unlisted value.
+          setDb((prev) => (prev && !list.includes(prev) ? '' : prev));
         }
       } catch (e: any) {
         if (cancelled) return;
@@ -123,11 +172,12 @@ export default function LoginScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scroll}>
-            {/* Brand mark — logo on a white chip so it reads in both themes */}
-            <View style={[styles.logoChip, Shadow.card]}>
+            {/* Brand mark — scales up on tablets; in dark mode it sits on a
+                white chip, since the wordmark is black on transparent. */}
+            <View style={[styles.logoWrap, scheme === 'dark' && styles.logoChipDark]}>
               <Image
-                source={require('../assets/images/logo-369-ad.png')}
-                style={styles.logo}
+                source={require('../assets/images/nexgenn-pos.png')}
+                style={{ width: logoW, height: Math.round(logoW / LOGO_RATIO) }}
                 resizeMode="contain"
               />
             </View>
@@ -149,36 +199,41 @@ export default function LoginScreen() {
                 autoCapitalize="none"
               />
 
-              {/* Database: dropdown when the server lists DBs, else manual entry */}
-              {dbs.length > 0 ? (
-                <View style={{ marginTop: 14 }}>
-                  <Text style={[styles.label, { color: c.textMuted }]}>Database</Text>
-                  <Pressable
-                    onPress={() => setDbModalVisible(true)}
-                    style={[styles.inputRow, { backgroundColor: inputBg, borderColor: c.border }]}>
-                    <Ionicons name="server" size={18} color={c.textMuted} />
-                    <Text style={[styles.input, { color: db ? c.text : c.textMuted }]} numberOfLines={1}>
-                      {db || 'Select a database'}
-                    </Text>
-                    <View style={[styles.dbCount, { backgroundColor: scheme === 'dark' ? 'rgba(155,140,255,0.2)' : 'rgba(79,70,229,0.12)' }]}>
-                      <Text style={[styles.dbCountText, { color: c.tint }]}>{dbs.length}</Text>
-                    </View>
-                    <Ionicons name="chevron-down" size={18} color={c.textMuted} />
-                  </Pressable>
-                </View>
-              ) : (
-                <Field
-                  c={c}
-                  inputBg={inputBg}
-                  icon="server"
-                  label="Database"
-                  value={db}
-                  onChangeText={setDb}
-                  placeholder={dbLoading ? 'Loading databases…' : 'Database name'}
-                  autoCapitalize="none"
-                  loading={dbLoading}
-                />
-              )}
+              {/* Database is always a dropdown — never typed by hand, so it can
+                  only ever hold a database the server actually reported. */}
+              <View style={{ marginTop: 14 }}>
+                <Text style={[styles.label, { color: c.textMuted }]}>Database</Text>
+                <Pressable
+                  disabled={dbs.length === 0}
+                  onPress={() => setDbModalVisible(true)}
+                  style={[
+                    styles.inputRow,
+                    { backgroundColor: inputBg, borderColor: c.border },
+                    dbs.length === 0 && { opacity: 0.6 },
+                  ]}>
+                  <Ionicons name="server" size={18} color={c.textMuted} />
+                  <Text style={[styles.input, { color: db ? c.text : c.textMuted }]} numberOfLines={1}>
+                    {db ||
+                      (dbLoading
+                        ? 'Loading databases…'
+                        : baseUrl.trim().length < 4
+                          ? 'Enter the server URL first'
+                          : dbs.length === 0
+                            ? 'No databases found'
+                            : 'Select a database')}
+                  </Text>
+                  {dbLoading ? (
+                    <ActivityIndicator size="small" color={c.textMuted} />
+                  ) : dbs.length > 0 ? (
+                    <>
+                      <View style={[styles.dbCount, { backgroundColor: scheme === 'dark' ? 'rgba(155,140,255,0.2)' : 'rgba(79,70,229,0.12)' }]}>
+                        <Text style={[styles.dbCountText, { color: c.tint }]}>{dbs.length}</Text>
+                      </View>
+                      <Ionicons name="chevron-down" size={18} color={c.textMuted} />
+                    </>
+                  ) : null}
+                </Pressable>
+              </View>
 
               {dbError && !dbLoading ? (
                 <View style={styles.dbErrorRow}>
@@ -227,7 +282,7 @@ export default function LoginScreen() {
               />
             </View>
 
-            <Text style={[styles.powered, { color: c.textMuted }]}>Powered by 369ai · v1.0.0</Text>
+            <Text style={[styles.powered, { color: c.textMuted }]}>Powered by 369ai  |  v{APP_VERSION}</Text>
           </ScrollView>
         </SafeAreaView>
       </KeyboardAvoidingView>
@@ -285,7 +340,6 @@ function Field({
   label,
   rightIcon,
   onRightIconPress,
-  loading,
   ...input
 }: {
   c: (typeof Colors)['light'];
@@ -294,7 +348,6 @@ function Field({
   label: string;
   rightIcon?: keyof typeof Ionicons.glyphMap;
   onRightIconPress?: () => void;
-  loading?: boolean;
 } & ComponentProps<typeof TextInput>) {
   const [focused, setFocused] = useState(false);
   return (
@@ -321,9 +374,7 @@ function Field({
             input.onBlur?.(e);
           }}
         />
-        {loading ? (
-          <ActivityIndicator size="small" color={c.tint} />
-        ) : rightIcon ? (
+        {rightIcon ? (
           <Pressable onPress={onRightIconPress} hitSlop={8}>
             <Ionicons name={rightIcon} size={18} color={c.textMuted} />
           </Pressable>
@@ -354,15 +405,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 24,
   },
-  logoChip: {
-    alignSelf: 'center',
+  logoWrap: { alignSelf: 'center', marginBottom: 26 },
+  logoChipDark: {
     backgroundColor: '#fff',
     borderRadius: Radius.lg,
-    paddingHorizontal: 22,
-    paddingVertical: 16,
-    marginBottom: 26,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
   },
-  logo: { width: 210, height: 96 },
   h1: { fontSize: 28, fontWeight: '900', textAlign: 'center', letterSpacing: 0.2 },
   h2: { fontSize: 14, textAlign: 'center', marginTop: 6 },
   card: {

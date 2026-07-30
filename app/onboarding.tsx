@@ -12,6 +12,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,6 +22,8 @@ import { useAuth } from '@/context/auth';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 const { width: W, height: H } = Dimensions.get('window');
+/** Aspect ratio of nexgenn-pos.png (1065×234). */
+const LOGO_RATIO = 1065 / 234;
 
 type Slide = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -58,6 +61,10 @@ export default function Onboarding() {
   const waveColor = dark ? 'rgba(124,58,237,0.12)' : '#DCE6FA';
   const dotIdle = dark ? 'rgba(255,255,255,0.22)' : 'rgba(30,42,90,0.22)';
 
+  const { width: winW } = useWindowDimensions();
+  // Header-sized on a phone, noticeably larger on a tablet.
+  const logoW = Math.min(Math.max(winW * 0.36, 140), 320);
+
   const ref = useRef<FlatList<Slide>>(null);
   const [index, setIndex] = useState(0);
   const router = useRouter();
@@ -88,14 +95,16 @@ export default function Onboarding() {
       <StatusBar style={dark ? 'light' : 'dark'} />
       <View style={[styles.wave, { backgroundColor: waveColor }]} />
       <SafeAreaView style={{ flex: 1 }}>
-        {/* Top bar: 369 logo centered, Skip on the right */}
+        {/* Top bar: brand logo centered, Skip on the right */}
         <View style={styles.topBar}>
           <View style={styles.side} />
-          <Image
-            source={require('../assets/images/logo-369-ad.png')}
-            resizeMode="contain"
-            style={styles.logo}
-          />
+          <View style={dark ? styles.logoChipDark : undefined}>
+            <Image
+              source={require('../assets/images/nexgenn-pos.png')}
+              resizeMode="contain"
+              style={{ width: logoW, height: Math.round(logoW / LOGO_RATIO) }}
+            />
+          </View>
           <Pressable style={[styles.side, styles.skip]} onPress={finish} hitSlop={10}>
             <Text style={[styles.skipText, { color: c.textMuted }]}>Skip</Text>
           </Pressable>
@@ -167,7 +176,8 @@ const styles = StyleSheet.create({
     height: 56,
   },
   side: { width: 56 },
-  logo: { width: 116, height: 54 },
+  // The wordmark is black on transparent — back it with white on dark.
+  logoChipDark: { backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
   skip: { alignItems: 'flex-end' },
   skipText: { fontSize: 15, fontWeight: '700' },
   slide: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36, gap: 8 },

@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -48,7 +47,6 @@ export default function ScanFieldsScreen() {
   }, [base]);
 
   const onToggleGlobal = async (v: boolean) => {
-    Haptics.selectionAsync().catch(() => {});
     setGlobalMode(v);
     try {
       await setGlobalScanFields(base, { mode: v });
@@ -100,7 +98,6 @@ export default function ScanFieldsScreen() {
   }, [query, load]);
 
   const onToggle = async (item: ScanProduct, value: boolean) => {
-    Haptics.selectionAsync().catch(() => {});
     setBusyId(item.id);
     setProducts((prev) => prev.map((p) => (p.id === item.id ? { ...p, signage_enabled: value } : p)));
     try {
@@ -117,7 +114,6 @@ export default function ScanFieldsScreen() {
       <Pressable
         style={styles.rowMain}
         onPress={() => {
-          Haptics.selectionAsync().catch(() => {});
           router.push({
             pathname: '/scan-config',
             params: { id: String(item.id), name: item.name, globalActive: globalMode ? '1' : '0' },
@@ -161,7 +157,7 @@ export default function ScanFieldsScreen() {
 
       <View style={{ paddingHorizontal: 16, paddingTop: 12, gap: 12 }}>
         {/* Global fields — one field set for every product */}
-        <Card haptic={false}>
+        <Card>
           <View style={styles.globalRow}>
             <View style={[styles.globalIcon, { backgroundColor: Brand.indigo + '15' }]}>
               <Ionicons name="albums-outline" size={20} color={Brand.indigo} />
@@ -177,7 +173,6 @@ export default function ScanFieldsScreen() {
           {globalMode ? (
             <Pressable
               onPress={() => {
-                Haptics.selectionAsync().catch(() => {});
                 router.push({ pathname: '/scan-config', params: { global: '1' } });
               }}
               style={[styles.globalLink, { borderTopColor: c.border }]}>

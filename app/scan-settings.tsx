@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -40,7 +39,6 @@ export default function ScanSettingsScreen() {
   }, [base]);
 
   const pickMode = (m: ScanMode) => {
-    Haptics.selectionAsync().catch(() => {});
     setMode(m);
     setScanMode(m);
   };
@@ -56,7 +54,6 @@ export default function ScanSettingsScreen() {
     saveTimer.current = setTimeout(() => persist(clean, unit), 500);
   };
   const pickUnit = (u: 'sec' | 'min') => {
-    Haptics.selectionAsync().catch(() => {});
     setUnit(u);
     persist(value, u);
   };
