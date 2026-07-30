@@ -1,23 +1,32 @@
 {
   "expo": {
-    "name": "369 Advertisement",
-    "slug": "advertisement-369",
+    "name": "NEXGENN PRICE CHECKER",
+    "slug": "369-price-checker",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "ads369",
+    "scheme": "pricechecker",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.alphalize.pricechecker369"
     },
     "android": {
+      "package": "com.alphalize.pricechecker369",
+      "icon": "./assets/images/icon.png",
       "adaptiveIcon": {
-        "backgroundColor": "#EBF1FC",
+        "backgroundColor": "#000000",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -40,7 +49,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow 369 Advertisement to use your photos to add ad images."
+          "photosPermission": "Allow NEXGENN PRICE CHECKER to use your photos to add ad images."
         }
       ],
       "expo-video",
@@ -48,13 +57,20 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow 369 to use the camera to scan product barcodes."
+          "cameraPermission": "Allow NEXGENN PRICE CHECKER to use the camera to scan product barcodes."
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "fc71e55c-b613-458c-bae6-93475c3faa30"
+      }
+    },
+    "owner": "tajafiy"
   }
 }

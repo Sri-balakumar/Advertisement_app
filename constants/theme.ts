@@ -1,5 +1,5 @@
 /**
- * 369 Advertisement — design tokens.
+ * NEXGENN Price Checker — design tokens.
  * Indigo → violet brand system with light/dark surfaces.
  */
 import { Platform } from 'react-native';
