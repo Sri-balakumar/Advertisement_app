@@ -7,12 +7,11 @@ import { Card, Divider, Header, Screen, SectionLabel, useC } from '@/components/
 import { Brand, Radius, Type } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { getDetailConfig, setDetailConfig } from '@/services/odoo';
-import { getScanMode, ScanMode, setScanMode } from '@/services/scanSettings';
+import { DEFAULT_SCAN_MODE, getScanMode, ScanMode, setScanMode } from '@/services/scanSettings';
 
 const MODES: { key: ScanMode; label: string; sub: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: 'auto', label: 'Auto (recommended)', sub: 'Uses a USB scanner if attached, otherwise the mobile camera.', icon: 'sync-outline' },
-  { key: 'usb', label: 'USB scanner', sub: 'USB barcode scanner only. Camera stays off (zero battery).', icon: 'hardware-chip-outline' },
-  { key: 'camera', label: 'Mobile camera', sub: 'A small camera window scans while the Home screen is open.', icon: 'camera-outline' },
+  { key: 'usb', label: 'USB scanner', sub: 'For POS terminals with a barcode scanner. The camera stays off.', icon: 'hardware-chip-outline' },
+  { key: 'camera', label: 'Mobile camera', sub: 'For phones and tablets. A camera window scans on the Home screen.', icon: 'camera-outline' },
 ];
 
 export default function ScanSettingsScreen() {
@@ -21,7 +20,7 @@ export default function ScanSettingsScreen() {
   const { user } = useAuth();
   const base = user?.base_url || '';
 
-  const [mode, setMode] = useState<ScanMode>('auto');
+  const [mode, setMode] = useState<ScanMode>(DEFAULT_SCAN_MODE);
   const [value, setValue] = useState('8');
   const [unit, setUnit] = useState<'sec' | 'min'>('sec');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

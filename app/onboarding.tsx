@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useRef, useState } from 'react';
 import {
-  Dimensions,
   FlatList,
   Image,
   NativeScrollEvent,
@@ -21,7 +20,6 @@ import { Brand, Colors } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
-const { width: W, height: H } = Dimensions.get('window');
 /** Aspect ratio of nexgenn-pos.png (1065×234). */
 const LOGO_RATIO = 1065 / 234;
 
@@ -61,7 +59,7 @@ export default function Onboarding() {
   const waveColor = dark ? 'rgba(124,58,237,0.12)' : '#DCE6FA';
   const dotIdle = dark ? 'rgba(255,255,255,0.22)' : 'rgba(30,42,90,0.22)';
 
-  const { width: winW } = useWindowDimensions();
+  const { width: winW, height: winH } = useWindowDimensions();
   // Header-sized on a phone, noticeably larger on a tablet.
   const logoW = Math.min(Math.max(winW * 0.36, 140), 320);
 
@@ -78,7 +76,7 @@ export default function Onboarding() {
   const next = () => {
     if (index < SLIDES.length - 1) {
       const n = index + 1;
-      ref.current?.scrollToOffset({ offset: n * W, animated: true });
+      ref.current?.scrollToOffset({ offset: n * winW, animated: true });
       setIndex(n);
     } else {
       finish();
@@ -86,14 +84,26 @@ export default function Onboarding() {
   };
 
   const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) =>
-    setIndex(Math.round(e.nativeEvent.contentOffset.x / W));
+    setIndex(Math.round(e.nativeEvent.contentOffset.x / winW));
 
   const last = index === SLIDES.length - 1;
 
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <StatusBar style={dark ? 'light' : 'dark'} />
-      <View style={[styles.wave, { backgroundColor: waveColor }]} />
+      <View
+        style={[
+          styles.wave,
+          {
+            backgroundColor: waveColor,
+            left: -winW * 0.3,
+            right: -winW * 0.3,
+            height: winH * 0.26,
+            borderTopLeftRadius: winW * 0.9,
+            borderTopRightRadius: winW * 0.9,
+          },
+        ]}
+      />
       <SafeAreaView style={{ flex: 1 }}>
         {/* Top bar: brand logo centered, Skip on the right */}
         <View style={styles.topBar}>
@@ -119,7 +129,7 @@ export default function Onboarding() {
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={onScrollEnd}
           renderItem={({ item }) => (
-            <View style={[styles.slide, { width: W }]}>
+            <View style={[styles.slide, { width: winW }]}>
               <View style={[styles.iconWrap, { backgroundColor: item.accent + '1a', borderColor: item.accent + '33' }]}>
                 <Ionicons name={item.icon} size={64} color={item.accent} />
               </View>
@@ -159,14 +169,10 @@ export default function Onboarding() {
 }
 
 const styles = StyleSheet.create({
+  // Geometry comes from the live window size at render time — see the JSX.
   wave: {
     position: 'absolute',
     bottom: 0,
-    left: -W * 0.3,
-    right: -W * 0.3,
-    height: H * 0.26,
-    borderTopLeftRadius: W * 0.9,
-    borderTopRightRadius: W * 0.9,
   },
   topBar: {
     flexDirection: 'row',

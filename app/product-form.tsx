@@ -143,6 +143,12 @@ export default function ProductFormScreen() {
     }
     setScanOpen(true);
   };
+
+  const onScanMountError = (e?: { message?: string }) => {
+    console.warn('[camera] product-form mount failed:', e?.message ?? e);
+    setScanOpen(false);
+    Alert.alert('Camera unavailable', 'Type the barcode, or scan it with the USB scanner.');
+  };
   const onScan = ({ data }: { data: string }) => {
     setBarcode(String(data || '').trim());
     setScanOpen(false);
@@ -509,6 +515,7 @@ export default function ProductFormScreen() {
               <CameraView
                 style={StyleSheet.absoluteFill}
                 onBarcodeScanned={onScan}
+                onMountError={onScanMountError}
                 barcodeScannerSettings={{ barcodeTypes: [...BARCODE_TYPES] }}
               />
             ) : null}

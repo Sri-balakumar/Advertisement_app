@@ -18,6 +18,7 @@ import 'react-native-reanimated';
 
 import '@/lib/global-font'; // side-effect: apply Inter to all Text/TextInput
 import { AnimatedSplash } from '@/components/animated-splash';
+import { RouteError } from '@/components/route-error';
 import { AuthProvider, useAuth } from '@/context/auth';
 import { TabBarProvider } from '@/context/tabbar';
 import { ThemePreferenceProvider } from '@/context/theme';
@@ -26,6 +27,9 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 export const unstable_settings = {
   anchor: '(tabs)',
 };
+
+// expo-router renders this instead of a blank screen when a route throws.
+export { RouteError as ErrorBoundary };
 
 /**
  * Startup tracing. Every line is prefixed [boot] so you can filter the Metro

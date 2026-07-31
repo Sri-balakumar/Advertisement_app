@@ -1,17 +1,20 @@
 /**
  * App-side scan preferences (persisted in AsyncStorage; no Odoo involvement).
  *
- *  - scan mode:     'auto'   = use a USB scanner if one is attached, else the
- *                             mobile camera (default — self-detecting)
- *                   'usb'    = keyboard-wedge USB scanner only, camera stays OFF
- *                   'camera' = small always-on corner camera window (phone)
+ *  - scan mode:     'usb'    = keyboard-wedge USB scanner, camera stays OFF
+ *                             (default — what the POS terminals use)
+ *                   'camera' = camera window on Home, tap to enlarge (phones)
  *  - detail seconds: how long a scanned product's detail stays on screen.
+ *
+ * The mode is chosen by the operator and never inferred. An earlier 'auto'
+ * mode tried to detect whether a camera existed; every implementation of that
+ * guess was wrong on some device, so the choice is now explicit.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type ScanMode = 'auto' | 'usb' | 'camera';
+export type ScanMode = 'usb' | 'camera';
 
-export const DEFAULT_SCAN_MODE: ScanMode = 'auto';
+export const DEFAULT_SCAN_MODE: ScanMode = 'usb';
 export const DEFAULT_DETAIL_SECONDS = 8;
 export const DETAIL_SECONDS_OPTS = [5, 8, 15, 30] as const;
 
@@ -20,8 +23,9 @@ const SECONDS_KEY = 'scan_detail_seconds';
 
 export async function getScanMode(): Promise<ScanMode> {
   try {
-    const v = await AsyncStorage.getItem(MODE_KEY);
-    return v === 'usb' ? 'usb' : v === 'camera' ? 'camera' : 'auto';
+    // Anything that isn't an explicit 'camera' — including the retired 'auto'
+    // stored on existing devices — falls back to the USB scanner.
+    return (await AsyncStorage.getItem(MODE_KEY)) === 'camera' ? 'camera' : 'usb';
   } catch {
     return DEFAULT_SCAN_MODE;
   }

@@ -2,15 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Dimensions, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { Card, EmptyState, Header, HeaderIcon, Screen, Skeleton, useC } from '@/components/ui';
 import { Brand, Radius, Type } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { CardVideo } from '@/components/card-video';
 import { getManageBanners, ManageBanner } from '@/services/odoo';
-
-const CARD_W = (Dimensions.get('window').width - 44) / 2;
 
 function toReachable(url: string | false, base: string): string | false {
   if (!url || !base) return url;
@@ -28,6 +26,10 @@ function Badge({ text, bg }: { text: string; bg: string }) {
 
 export default function BannersScreen() {
   const c = useC();
+  // Live width so the two-up grid stays correct on a rotated tablet or a wide
+  // POS panel, instead of the size captured when the module first loaded.
+  const { width: winW } = useWindowDimensions();
+  const CARD_W = (winW - 44) / 2;
   const router = useRouter();
   const { user } = useAuth();
 

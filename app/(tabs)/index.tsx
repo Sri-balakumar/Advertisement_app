@@ -10,7 +10,6 @@ import {
   Alert,
   Animated,
   AppState,
-  Dimensions,
   Easing,
   FlatList,
   Image,
@@ -24,6 +23,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,10 +32,8 @@ import { Brand } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { useTabBar } from '@/context/tabbar';
 import { getSignageBanners, lookupProduct, ProductLookup, SignageBanner } from '@/services/odoo';
-import { getScanMode, ScanMode } from '@/services/scanSettings';
+import { DEFAULT_SCAN_MODE, getScanMode, ScanMode } from '@/services/scanSettings';
 
-const W = Dimensions.get('window').width;
-const H = Dimensions.get('window').height;
 const DEFAULT_SECONDS = 6;
 const CONTROLS_HIDE_MS = 3500;
 
@@ -152,6 +150,9 @@ export default function SignageScreen() {
   const { user } = useAuth();
   const base = user?.base_url || '';
   const isFocused = useIsFocused();
+  // Live, so banner paging stays correct on a rotating tablet and on a fixed
+  // 1920x1080 landscape POS panel alike.
+  const { width: W, height: H } = useWindowDimensions();
   const { setHidden } = useTabBar();
   const insets = useSafeAreaInsets();
   // Sit above the floating tab bar (bottom inset + bar height + gap).
@@ -169,12 +170,10 @@ export default function SignageScreen() {
   const [looking, setLooking] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
 
-  // Scan mode (device-local); detail display time comes from the server per lookup.
-  const [scanMode, setScanMode] = useState<ScanMode>('auto');
+  // Scan mode (device-local, operator's choice); detail display time comes
+  // from the server per lookup.
+  const [scanMode, setScanMode] = useState<ScanMode>(DEFAULT_SCAN_MODE);
   const [appActive, setAppActive] = useState(true);
-  // Auto mode: once a USB scan is seen this visit, a scanner is present → the
-  // camera fallback turns off to save battery.
-  const [usbActive, setUsbActive] = useState(false);
 
   const usbRef = useRef<TextInput>(null);
   const [usbValue, setUsbValue] = useState('');
@@ -190,9 +189,11 @@ export default function SignageScreen() {
   const [camModal, setCamModal] = useState(false);
 
   const scanBusy = !!result || !!notFound || looking;
-  const usbEnabled = scanMode === 'usb' || scanMode === 'auto';
-  const wantCamera = scanMode === 'camera' || (scanMode === 'auto' && !usbActive);
-  const cameraLive = wantCamera && isFocused && appActive && !!permission?.granted;
+  const usbEnabled = scanMode === 'usb';
+  const wantCamera = scanMode === 'camera';
+  // `base` keeps the camera from binding during the logged-out cold start,
+  // when this screen mounts only to be routed away a moment later.
+  const cameraLive = wantCamera && !!base && isFocused && appActive && !!permission?.granted;
 
   const load = useCallback(async () => {
     if (!base) {
@@ -220,7 +221,6 @@ export default function SignageScreen() {
       let alive = true;
       load();
       getScanMode().then((m) => alive && setScanMode(m));
-      setUsbActive(false); // re-detect USB vs camera each visit (Auto mode)
       return () => {
         alive = false;
       };
@@ -233,13 +233,21 @@ export default function SignageScreen() {
     return () => sub.remove();
   }, []);
 
+  // Record a camera failure without acting on it. Disabling the camera
+  // automatically is what previously left devices stuck with no way back —
+  // the operator's choice in Scan Settings is now the only thing that decides.
+  const onCameraMountError = useCallback((e?: { message?: string }) => {
+    console.warn('[camera] mount failed:', e?.message ?? e);
+    setCamModal(false);
+  }, []);
+
   // Ask for camera permission for Camera mode, and for Auto (camera fallback).
+  // Only in Camera mode, so a POS set to USB never sees a prompt.
   useEffect(() => {
-    if ((scanMode !== 'camera' && scanMode !== 'auto') || permission?.granted) return;
+    if (scanMode !== 'camera' || permission?.granted) return;
     (async () => {
       const res = await requestPermission();
-      // Only nag with the Settings shortcut when Camera was explicitly chosen.
-      if (scanMode === 'camera' && !res.granted && res.canAskAgain === false) {
+      if (!res.granted && res.canAskAgain === false) {
         Alert.alert(
           'Camera permission needed',
           'Enable camera access for 369 in Settings to scan barcodes with the camera.',
@@ -284,11 +292,18 @@ export default function SignageScreen() {
 
   // Keep the hidden input focused so a USB barcode scanner (keyboard-wedge)
   // types into it — only in USB mode, and not while an overlay is up.
+  // On a camera-less POS this input is the ONLY way to scan, so it is also
+  // refocused on blur and whenever the app returns to the foreground.
+  const refocusUsb = useCallback(() => {
+    if (!usbEnabled || scanBusy) return;
+    usbRef.current?.focus();
+  }, [usbEnabled, scanBusy]);
+
   useEffect(() => {
     if (!usbEnabled || scanBusy) return;
-    const t = setTimeout(() => usbRef.current?.focus(), 350);
+    const t = setTimeout(refocusUsb, 350);
     return () => clearTimeout(t);
-  }, [usbEnabled, scanBusy, banners.length]);
+  }, [usbEnabled, scanBusy, banners.length, appActive, refocusUsb]);
 
   // Auto-dismiss the product detail after the shared (server) display time.
   useEffect(() => {
@@ -333,8 +348,6 @@ export default function SignageScreen() {
   const onUsbSubmit = () => {
     const code = usbValue;
     setUsbValue('');
-    // A USB scan proves a scanner is attached → prefer it (Auto turns camera off).
-    if (code.trim()) setUsbActive(true);
     doLookup(code);
   };
 
@@ -531,6 +544,7 @@ export default function SignageScreen() {
           value={usbValue}
           onChangeText={setUsbValue}
           onSubmitEditing={onUsbSubmit}
+          onBlur={() => setTimeout(refocusUsb, 120)}
           submitBehavior="submit"
           showSoftInputOnFocus={false}
           autoCorrect={false}
@@ -579,6 +593,7 @@ export default function SignageScreen() {
               <CameraView
                 style={StyleSheet.absoluteFill}
                 onBarcodeScanned={onBarcode}
+                onMountError={onCameraMountError}
                 barcodeScannerSettings={{ barcodeTypes: [...BARCODE_TYPES] }}
               />
               <View style={styles.viewfinderExpand}>
@@ -708,6 +723,7 @@ export default function SignageScreen() {
               <CameraView
                 style={StyleSheet.absoluteFill}
                 onBarcodeScanned={onBarcode}
+                onMountError={onCameraMountError}
                 barcodeScannerSettings={{ barcodeTypes: [...BARCODE_TYPES] }}
               />
             ) : null}

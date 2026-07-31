@@ -1,9 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef } from 'react';
-import { Animated, Dimensions, Easing, Image, StyleSheet, Text, View } from 'react-native';
-
-const { width: SW, height: SH } = Dimensions.get('window');
+import {
+  Animated,
+  Easing,
+  Image,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
 const BG = '#EBF1FC';
 const WAVE = '#DCE6FA';
@@ -26,7 +32,18 @@ const CARDS: Card[] = [
  */
 const boot = (...args: unknown[]) => console.log('[boot][splash]', ...args);
 
+// Intrinsic sizes of the branding assets, so they scale without distorting.
+const LOGO_RATIO = 1168 / 547; // logo-369-ad.png
+const WORDMARK_RATIO = 864 / 240; // alphalize.png
+
 export function AnimatedSplash({ onDone }: { onDone: () => void }) {
+  // Read live so the splash fits a phone, a tablet and a 15.6" landscape POS
+  // panel alike — and survives a rotation mid-animation.
+  const { width: SW, height: SH } = useWindowDimensions();
+  const shortEdge = Math.min(SW, SH);
+  const logoW = Math.max(200, Math.min(shortEdge * 0.6, 460));
+  const wordmarkW = Math.max(140, Math.min(shortEdge * 0.3, 240));
+
   const overlay = useRef(new Animated.Value(1)).current;
   const logoScale = useRef(new Animated.Value(0.8)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
@@ -82,7 +99,18 @@ export function AnimatedSplash({ onDone }: { onDone: () => void }) {
       <StatusBar style="dark" />
 
       {/* soft wave band that seats the wordmark */}
-      <View style={styles.wave} />
+      <View
+        style={[
+          styles.wave,
+          {
+            left: -SW * 0.3,
+            right: -SW * 0.3,
+            height: SH * 0.3,
+            borderTopLeftRadius: SW * 0.9,
+            borderTopRightRadius: SW * 0.9,
+          },
+        ]}
+      />
 
       {/* floating feature chips */}
       {CARDS.map((card, i) => (
@@ -107,7 +135,15 @@ export function AnimatedSplash({ onDone }: { onDone: () => void }) {
           resizeMode="contain"
           onLoad={() => boot('logo-369-ad.png LOADED')}
           onError={(e) => boot('logo-369-ad.png FAILED —', e.nativeEvent?.error)}
-          style={[styles.logo, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}
+          style={[
+            styles.logo,
+            {
+              width: logoW,
+              height: logoW / LOGO_RATIO,
+              opacity: logoOpacity,
+              transform: [{ scale: logoScale }],
+            },
+          ]}
         />
         <Animated.View
           style={{ alignItems: 'center', opacity: up, transform: [{ translateY: rise }] }}>
@@ -123,7 +159,7 @@ export function AnimatedSplash({ onDone }: { onDone: () => void }) {
           resizeMode="contain"
           onLoad={() => boot('alphalize.png LOADED')}
           onError={(e) => boot('alphalize.png FAILED —', e.nativeEvent?.error)}
-          style={styles.wordmark}
+          style={[styles.wordmark, { width: wordmarkW, height: wordmarkW / WORDMARK_RATIO }]}
         />
       </Animated.View>
     </Animated.View>
@@ -132,15 +168,12 @@ export function AnimatedSplash({ onDone }: { onDone: () => void }) {
 
 const styles = StyleSheet.create({
   root: { backgroundColor: BG },
+  // Geometry (left/right/height/radius) is supplied at render time from the
+  // live window size — see AnimatedSplash.
   wave: {
     position: 'absolute',
     bottom: 0,
-    left: -SW * 0.3,
-    right: -SW * 0.3,
-    height: SH * 0.3,
     backgroundColor: WAVE,
-    borderTopLeftRadius: SW * 0.9,
-    borderTopRightRadius: SW * 0.9,
   },
   card: {
     position: 'absolute',
@@ -157,9 +190,9 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   center: { alignItems: 'center', justifyContent: 'center' },
-  logo: { width: 260, height: 122, marginBottom: 22 },
+  logo: { marginBottom: 22 }, // width/height scale with the screen at render time
   headline: { fontSize: 22, fontWeight: '900', color: NAVY, letterSpacing: 0.3 },
   underline: { width: 64, height: 4, borderRadius: 2, backgroundColor: '#4f46e5', marginTop: 10 },
   bottom: { position: 'absolute', bottom: 46, left: 0, right: 0, alignItems: 'center' },
-  wordmark: { width: 168, height: 46 },
+  wordmark: {}, // width/height scale with the screen at render time
 });

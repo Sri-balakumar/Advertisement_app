@@ -20,7 +20,7 @@ const ENTRIES: Entry[] = [
   { title: 'Products', subtitle: 'Add & edit products (name, barcode, price, image)', icon: 'cube-outline', route: '/products', tint: '#f59e0b' },
   { title: 'Banners', subtitle: 'Image & video banners shown full-screen', icon: 'images-outline', route: '/banners', tint: '#4f46e5' },
   { title: 'Scan Fields', subtitle: 'Per-product: show on scan + which fields appear', icon: 'pricetags-outline', route: '/scan-fields', tint: '#0ea5e9' },
-  { title: 'Scanner & Display', subtitle: 'Scan method (Auto / USB / camera) + detail time', icon: 'options-outline', route: '/scan-settings', tint: '#10b981' },
+  { title: 'Scanner & Display', subtitle: 'Scan method (USB scanner / camera) + detail time', icon: 'options-outline', route: '/scan-settings', tint: '#10b981' },
   { title: 'Scan History', subtitle: 'Recent scans & missing barcodes', icon: 'time-outline', route: '/scan-history', tint: '#8b5cf6' },
 ];
 

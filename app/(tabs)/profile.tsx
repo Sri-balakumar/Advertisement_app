@@ -120,6 +120,17 @@ export default function ProfileScreen() {
             onPress={() => router.push('/onboarding')}
           />
           <Divider c={c} />
+          {/* Ungated: Scan mode is otherwise only reachable via Manage, which
+              is hidden for non-managers — leaving shop staff no way to switch
+              between the USB scanner and the camera. */}
+          <SettingRow
+            c={c}
+            icon="barcode-outline"
+            tint={Brand.emerald}
+            label="Scan mode"
+            onPress={() => router.push('/scan-settings')}
+          />
+          <Divider c={c} />
           <SettingRow
             c={c}
             icon="log-out-outline"
