@@ -13,7 +13,7 @@ import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { Image, Platform } from 'react-native';
 import 'react-native-reanimated';
 
 import '@/lib/global-font'; // side-effect: apply Inter to all Text/TextInput
@@ -27,7 +27,31 @@ export const unstable_settings = {
   anchor: '(tabs)',
 };
 
-SplashScreen.preventAutoHideAsync();
+/**
+ * Startup tracing. Every line is prefixed [boot] so you can filter the Metro
+ * console with it. Remove this block once the launch sequence is understood.
+ */
+const boot = (...args: unknown[]) => console.log('[boot]', ...args);
+
+boot('module init — resolving branding assets…');
+try {
+  const assets: Record<string, number> = {
+    'splash logo (logo-369-ad)': require('@/assets/images/logo-369-ad.png'),
+    'app icon (icon.png)': require('@/assets/images/icon.png'),
+    'nexgenn wordmark': require('@/assets/images/nexgenn-pos.png'),
+    'alphalize wordmark': require('@/assets/images/alphalize.png'),
+  };
+  for (const [label, mod] of Object.entries(assets)) {
+    const src = Image.resolveAssetSource(mod);
+    boot(`  ${label}: ${src?.width}x${src?.height} → ${src?.uri}`);
+  }
+} catch (e: any) {
+  boot('  ASSET RESOLVE FAILED:', e?.message || e);
+}
+
+SplashScreen.preventAutoHideAsync()
+  .then(() => boot('native splash: auto-hide prevented'))
+  .catch((e) => boot('native splash: preventAutoHide FAILED —', e?.message || e));
 
 export default function RootLayout() {
   return (
@@ -78,22 +102,44 @@ function RootNavigator() {
   });
 
   useEffect(() => {
-    SplashScreen.hideAsync().catch(() => {});
+    boot('RootNavigator mounted — hiding native splash');
+    SplashScreen.hideAsync()
+      .then(() => boot('native splash: hidden'))
+      .catch((e) => boot('native splash: hideAsync FAILED —', e?.message || e));
   }, []);
 
   // Show the animated splash until it finishes AND the session + fonts load.
   const ready = splashDone && !initializing && fontsLoaded;
 
+  // Which of the three gates is still holding the splash up?
+  useEffect(() => {
+    boot(
+      `gates → splashDone=${splashDone} fontsLoaded=${fontsLoaded} authInitializing=${initializing} ⇒ ready=${ready}`,
+    );
+    if (!ready) {
+      const waiting = [
+        !splashDone && 'splash animation',
+        !fontsLoaded && 'Inter fonts',
+        initializing && 'auth session',
+      ].filter(Boolean);
+      boot('  still waiting on:', waiting.join(', '));
+    }
+  }, [splashDone, fontsLoaded, initializing, ready]);
+
   // Decide the initial destination once, after splash + session are known.
   useEffect(() => {
     if (!ready || routed.current) return;
     routed.current = true;
+    boot(`routing → onboarded=${onboarded} signedIn=${!!user}`);
     if (!onboarded) {
+      boot('  → /onboarding');
       router.replace('/onboarding');
     } else if (!user) {
+      boot('  → /login');
       router.replace('/login');
+    } else {
+      boot('  → staying on (tabs)');
     }
-    // else: already anchored on (tabs)
   }, [ready, onboarded, user, router]);
 
   return (

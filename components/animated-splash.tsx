@@ -24,6 +24,8 @@ const CARDS: Card[] = [
  * logo scaling in, drifting signage/scan/price chips, a "Display · Scan · Price"
  * headline over a soft wave, and the Alphalize wordmark; then a smooth fade-out.
  */
+const boot = (...args: unknown[]) => console.log('[boot][splash]', ...args);
+
 export function AnimatedSplash({ onDone }: { onDone: () => void }) {
   const overlay = useRef(new Animated.Value(1)).current;
   const logoScale = useRef(new Animated.Value(0.8)).current;
@@ -32,6 +34,7 @@ export function AnimatedSplash({ onDone }: { onDone: () => void }) {
   const float = useRef(new Animated.Value(0)).current; // cards gentle drift
 
   useEffect(() => {
+    boot('mounted — starting animation');
     Animated.loop(
       Animated.sequence([
         Animated.timing(float, {
@@ -62,8 +65,11 @@ export function AnimatedSplash({ onDone }: { onDone: () => void }) {
         easing: Easing.in(Easing.ease),
         useNativeDriver: true,
       }),
-    ]).start(() => onDone());
-  }, [logoOpacity, logoScale, overlay, up, float]);
+    ]).start(({ finished }) => {
+      boot(`animation ended (finished=${finished}) — calling onDone()`);
+      onDone();
+    });
+  }, [logoOpacity, logoScale, overlay, up, float, onDone]);
 
   const rise = up.interpolate({ inputRange: [0, 1], outputRange: [14, 0] });
   const floatUp = float.interpolate({ inputRange: [0, 1], outputRange: [0, -10] });
@@ -99,6 +105,8 @@ export function AnimatedSplash({ onDone }: { onDone: () => void }) {
         <Animated.Image
           source={require('../assets/images/logo-369-ad.png')}
           resizeMode="contain"
+          onLoad={() => boot('logo-369-ad.png LOADED')}
+          onError={(e) => boot('logo-369-ad.png FAILED —', e.nativeEvent?.error)}
           style={[styles.logo, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}
         />
         <Animated.View
@@ -113,6 +121,8 @@ export function AnimatedSplash({ onDone }: { onDone: () => void }) {
         <Image
           source={require('../assets/images/alphalize.png')}
           resizeMode="contain"
+          onLoad={() => boot('alphalize.png LOADED')}
+          onError={(e) => boot('alphalize.png FAILED —', e.nativeEvent?.error)}
           style={styles.wordmark}
         />
       </Animated.View>

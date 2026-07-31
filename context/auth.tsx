@@ -40,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     (async () => {
+      console.log('[boot][auth] reading persisted session…');
       try {
         const [rawUser, ob] = await Promise.all([
           AsyncStorage.getItem('userData'),
@@ -47,10 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ]);
         if (rawUser) setUser(JSON.parse(rawUser));
         setOnboarded(ob === '1');
-      } catch {
+        console.log(`[boot][auth] session=${rawUser ? 'found' : 'none'} onboarded=${ob === '1'}`);
+      } catch (e: any) {
+        console.log('[boot][auth] read FAILED —', e?.message || e);
         // ignore — treat as logged-out / not onboarded
       } finally {
         setInitializing(false);
+        console.log('[boot][auth] initializing=false');
       }
     })();
   }, []);
