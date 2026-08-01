@@ -23,6 +23,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TextInputSubmitEditingEventData,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -50,12 +51,12 @@ const videoCache = new Map<number, string>();
 async function fetchLocalVideo(id: number, url: string): Promise<string> {
   const cached = videoCache.get(id);
   if (cached) return cached;
-  const res = await fetch(url, { credentials: 'include' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const bytes = new Uint8Array(await res.arrayBuffer());
   const file = new File(Paths.cache, `signage-video-${id}.mp4`);
   if (file.exists) file.delete();
-  file.write(bytes);
+  // Stream straight to disk. The previous version buffered the whole clip in
+  // memory via arrayBuffer(), which a POS terminal sharing ~4 GB with the rest
+  // of Android can fail to allocate — that made playback work only sometimes.
+  await File.downloadFileAsync(url, file);
   videoCache.set(id, file.uri);
   return file.uri;
 }
@@ -71,6 +72,10 @@ function LocalVideo({
   loop?: boolean;
   onEnded?: () => void;
 }) {
+  // Read inside the status listener without re-subscribing on every toggle.
+  const activeRef = useRef(active);
+  activeRef.current = active;
+
   const player = useVideoPlayer(uri, (p) => {
     p.loop = loop;
     p.muted = true;
@@ -82,6 +87,15 @@ function LocalVideo({
     if (active) player.play();
     else player.pause();
   }, [active, player]);
+  // A play() issued before the source finishes loading is dropped, which left
+  // the banner frozen on a black frame. Re-issue it the moment the player
+  // reports it is ready — on a slow POS that is often after `active` flipped.
+  useEffect(() => {
+    const sub = player.addListener('statusChange', ({ status }) => {
+      if (status === 'readyToPlay' && activeRef.current) player.play();
+    });
+    return () => sub.remove();
+  }, [player]);
   // Advance the carousel when this video finishes (Auto timing).
   useEffect(() => {
     if (!onEnded) return;
@@ -105,17 +119,26 @@ function BannerVideo({
   onEnded?: () => void;
 }) {
   const [localUri, setLocalUri] = useState<string | null>(() => videoCache.get(id) ?? null);
+  const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     if (localUri) return;
     let alive = true;
+    let retry: ReturnType<typeof setTimeout> | null = null;
     fetchLocalVideo(id, uri)
       .then((u) => alive && setLocalUri(u))
-      .catch(() => alive && setFailed(true));
+      .catch(() => {
+        if (!alive) return;
+        // A dropped Wi-Fi frame on a shop counter shouldn't kill the banner for
+        // the rest of the session — back off and try again a couple of times.
+        if (attempt < 2) retry = setTimeout(() => alive && setAttempt((a) => a + 1), 2000);
+        else setFailed(true);
+      });
     return () => {
       alive = false;
+      if (retry) clearTimeout(retry);
     };
-  }, [id, uri, localUri]);
+  }, [id, uri, localUri, attempt]);
   if (failed) {
     return (
       <View style={[styles.image, styles.center]}>
@@ -177,6 +200,8 @@ export default function SignageScreen() {
 
   const usbRef = useRef<TextInput>(null);
   const [usbValue, setUsbValue] = useState('');
+  // Mirrors the input synchronously — state alone lags behind a fast scanner.
+  const usbBuffer = useRef('');
   const lastScan = useRef<{ code: string; t: number }>({ code: '', t: 0 });
 
   // Banner player controls (tap to reveal, auto-hide, pause).
@@ -327,7 +352,9 @@ export default function SignageScreen() {
   }, [notFound]);
 
   const doLookup = async (code: string) => {
-    const c = code.trim();
+    // Scanners often append CR/LF or a tab, and some prepend control bytes —
+    // strip anything non-printable so the server sees the bare barcode.
+    const c = code.replace(/[\u0000-\u001F\u007F]/g, '').trim();
     // Ignore new scans while a result / not-found popup is up — the user must
     // close it (X) or wait for the timeout before the next scan works.
     if (!c || looking || result || notFound) return;
@@ -345,8 +372,14 @@ export default function SignageScreen() {
     }
   };
 
-  const onUsbSubmit = () => {
-    const code = usbValue;
+  // A USB/HID scanner types the whole barcode in a few milliseconds and then
+  // sends Enter. React batches those onChangeText updates, so `usbValue` state
+  // can still be missing the last characters by the time Enter arrives —
+  // which sent a truncated code to the server and looked like "not found".
+  // The native event carries the authoritative text; the ref is a fallback.
+  const onUsbSubmit = (e?: NativeSyntheticEvent<TextInputSubmitEditingEventData>) => {
+    const code = e?.nativeEvent?.text || usbBuffer.current || usbValue;
+    usbBuffer.current = '';
     setUsbValue('');
     doLookup(code);
   };
@@ -537,12 +570,15 @@ export default function SignageScreen() {
         />
       ) : null}
 
-      {/* Hidden USB / keyboard-wedge scanner input (no soft keyboard). USB + Auto. */}
+      {/* Hidden USB / keyboard-wedge scanner input (no soft keyboard). */}
       {usbEnabled ? (
         <TextInput
           ref={usbRef}
           value={usbValue}
-          onChangeText={setUsbValue}
+          onChangeText={(t) => {
+            usbBuffer.current = t;
+            setUsbValue(t);
+          }}
           onSubmitEditing={onUsbSubmit}
           onBlur={() => setTimeout(refocusUsb, 120)}
           submitBehavior="submit"
