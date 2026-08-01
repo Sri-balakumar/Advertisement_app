@@ -53,10 +53,16 @@ async function fetchLocalVideo(id: number, url: string): Promise<string> {
   if (cached) return cached;
   const file = new File(Paths.cache, `signage-video-${id}.mp4`);
   if (file.exists) file.delete();
-  // Stream straight to disk. The previous version buffered the whole clip in
-  // memory via arrayBuffer(), which a POS terminal sharing ~4 GB with the rest
-  // of Android can fail to allocate — that made playback work only sometimes.
-  await File.downloadFileAsync(url, file);
+  // Must go through fetch with credentials: File.downloadFileAsync downloads
+  // natively and carries none of RN's cookie jar. /signage/video is auth='public',
+  // but on a multi-DB server the session cookie is what selects the database —
+  // without it Odoo can't resolve one and answers 404, so video never loads.
+  const res = await fetch(url, { credentials: 'include' });
+  // Without this check a 404 HTML body gets written as .mp4 and fails silently at
+  // playback instead of tripping the retry in BannerVideo.
+  if (!res.ok) throw new Error(`Video download failed (HTTP ${res.status})`);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  file.write(bytes);
   videoCache.set(id, file.uri);
   return file.uri;
 }
@@ -73,8 +79,12 @@ function LocalVideo({
   onEnded?: () => void;
 }) {
   // Read inside the status listener without re-subscribing on every toggle.
+  // Written in an effect, not during render — app.json enables the React Compiler,
+  // and a ref write during render makes it bail out or memoize incorrectly.
   const activeRef = useRef(active);
-  activeRef.current = active;
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
 
   const player = useVideoPlayer(uri, (p) => {
     p.loop = loop;
