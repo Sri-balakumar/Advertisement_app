@@ -61,7 +61,7 @@ class SignageConfig(models.Model):
 
     @api.onchange('global_fields_mode')
     def _onchange_global_fields_mode(self):
-        """When the admin turns the mode on in the Settings form and no fields are
+        """When the admin turns the mode on in the Same Fields for All form and no fields are
         chosen yet, pre-fill the curated defaults so the list is never empty on
         first use. The empty-guard means a previously-saved list is preserved:
         turning off then on again keeps what was saved."""

@@ -8,14 +8,17 @@
         <field name="global_fields_mode" eval="False"/>
     </record>
 
+    <!-- Scanner & Display: timing only. The scan method (USB scanner vs mobile
+         camera) is a per-device choice stored on each terminal, so there is
+         nothing server-side to show for it here. -->
     <record id="signage_config_form" model="ir.ui.view">
         <field name="name">signage.config.form</field>
         <field name="model">signage.config</field>
         <field name="arch" type="xml">
-            <form string="Signage Settings" create="false" delete="false">
+            <form string="Scanner &amp; Display" create="false" delete="false">
                 <sheet>
                     <div class="oe_title">
-                        <h1>Signage Settings</h1>
+                        <h1>Scanner &amp; Display</h1>
                     </div>
                     <group>
                         <label for="detail_value" string="Detail display time"/>
@@ -27,14 +30,51 @@
                     </group>
                     <p class="text-muted">
                         How long a scanned product's details stay on screen before the banners come back.
-                        This is shared with the app (Manage → Scanner &amp; Display).
+                        Applies to every display device.
                     </p>
-                    <group string="Global scan fields">
+                    <div class="alert alert-info" role="alert">
+                        <i class="fa fa-info-circle me-1"/>
+                        The <b>scan method</b> — USB scanner or mobile camera — is set on each terminal
+                        in the app under <b>Manage → Scanner &amp; Display</b>, because it depends on the
+                        hardware that terminal has.
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="signage_config_action" model="ir.actions.act_window">
+        <field name="name">Scanner &amp; Display</field>
+        <field name="res_model">signage.config</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="signage_config_form"/>
+        <field name="res_id" ref="default_config"/>
+        <field name="target">current</field>
+    </record>
+
+    <menuitem id="signage_config_menu" name="Scanner &amp; Display"
+              parent="signage_menu_root"
+              action="signage_config_action" sequence="40"/>
+
+    <!-- Same fields for all products. Lives under Scan Fields (not Settings) so the
+         global switch sits next to the per-product lists it overrides. Backed by the
+         same signage.config singleton and the same /signage/global_fields/get|set
+         routes the app uses. -->
+    <record id="signage_global_fields_form" model="ir.ui.view">
+        <field name="name">signage.config.global.fields.form</field>
+        <field name="model">signage.config</field>
+        <field name="arch" type="xml">
+            <form string="Same Fields for All" create="false" delete="false">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>Same fields for all products</h1>
+                    </div>
+                    <group>
                         <field name="global_fields_mode"/>
                     </group>
                     <p class="text-muted">
                         When on, every scanned product shows the same fields chosen below,
-                        instead of each product's own scan-fields list.
+                        instead of each product's own list under <b>Scan Fields → Per Product</b>.
                     </p>
                     <field name="global_field_ids" invisible="not global_fields_mode">
                         <list editable="bottom">
@@ -48,16 +88,13 @@
         </field>
     </record>
 
-    <record id="signage_config_action" model="ir.actions.act_window">
-        <field name="name">Settings</field>
+    <record id="signage_global_fields_action" model="ir.actions.act_window">
+        <field name="name">Same Fields for All</field>
         <field name="res_model">signage.config</field>
         <field name="view_mode">form</field>
+        <field name="view_id" ref="signage_global_fields_form"/>
         <field name="res_id" ref="default_config"/>
         <field name="target">current</field>
     </record>
-
-    <menuitem id="signage_config_menu" name="Settings"
-              parent="signage_menu_root"
-              action="signage_config_action" sequence="30"/>
 
 </odoo>

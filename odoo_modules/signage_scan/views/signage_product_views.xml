@@ -14,7 +14,7 @@
                         <i class="fa fa-info-circle me-1"/>
                         <b>“Same fields for all products” is ON.</b> Every product shows the same global
                         fields, so changes to this product's own fields below <b>won't appear on scan</b>
-                        until you turn Global off (Signage Scan → Settings).
+                        until you turn Global off (Signage Scan → Scan Fields → Same Fields for All).
                     </div>
                     <group>
                         <field name="signage_enabled"/>
@@ -48,7 +48,7 @@
                         <i class="fa fa-info-circle me-1"/>
                         <b>“Same fields for all products” is ON.</b> Every product shows the same global
                         fields, so changes to this product's own fields below <b>won't appear on scan</b>
-                        until you turn Global off (Signage Scan → Settings).
+                        until you turn Global off (Signage Scan → Scan Fields → Same Fields for All).
                     </div>
                     <group>
                         <field name="barcode" readonly="1"/>
@@ -95,8 +95,17 @@
         </field>
     </record>
 
-    <menuitem id="signage_product_menu" name="Scan Fields"
-              parent="signage_menu_root"
-              action="signage_product_action" sequence="20"/>
+    <!-- Scan Fields groups the per-product lists and the global override that
+         replaces them, so both live in one place. -->
+    <menuitem id="signage_scan_fields_menu" name="Scan Fields"
+              parent="signage_menu_root" sequence="30"/>
+
+    <menuitem id="signage_product_menu" name="Per Product"
+              parent="signage_scan_fields_menu"
+              action="signage_product_action" sequence="10"/>
+
+    <menuitem id="signage_global_fields_menu" name="Same Fields for All"
+              parent="signage_scan_fields_menu"
+              action="signage_global_fields_action" sequence="20"/>
 
 </odoo>

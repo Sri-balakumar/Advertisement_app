@@ -38,7 +38,7 @@ class SignageProductField(models.Model):
                         "“Same fields for all products” is currently ON, so every "
                         "product shows the same global fields. This field you just turned on "
                         "for this product won't appear on scan until you turn Global mode off "
-                        "(Signage Scan → Settings)."
+                        "(Signage Scan → Scan Fields → Same Fields for All)."
                     ),
                 }
             }

@@ -94,8 +94,23 @@
         <field name="view_mode">kanban,list,form</field>
     </record>
 
+    <!-- web_icon drives the app-switcher/sidebar tile; the Apps-screen card picks
+         up static/description/icon.png by convention.
+
+         groups on the root hides the whole app from non-managers, matching the
+         app, where the Manage tab disappears unless canManage (/signage/can_manage
+         → _is_manager() → signage.banner create rights → base.group_system).
+         Children need no groups of their own: load_menus builds the tree by parent,
+         so children of a filtered-out root are dropped as orphans. Store terminals
+         are unaffected — every app-facing route goes through sudo(). -->
     <menuitem id="signage_menu_root" name="Signage Scan"
+              web_icon="signage_scan,static/description/icon.png"
+              groups="base.group_system"
               action="signage_banner_action" sequence="102"/>
+
+    <menuitem id="signage_banner_menu" name="Banners"
+              parent="signage_menu_root"
+              action="signage_banner_action" sequence="20"/>
 
     <record id="signage_preview_action" model="ir.actions.act_url">
         <field name="name">Live Preview</field>
@@ -104,6 +119,6 @@
     </record>
     <menuitem id="signage_preview_menu" name="Live Preview"
               parent="signage_menu_root"
-              action="signage_preview_action" sequence="15"/>
+              action="signage_preview_action" sequence="60"/>
 
 </odoo>
