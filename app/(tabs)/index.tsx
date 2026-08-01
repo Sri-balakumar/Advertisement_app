@@ -45,26 +45,56 @@ function toReachable(url: string | false, base: string): string | false {
   return path.startsWith('/') ? base.replace(/\/+$/, '') + path : url;
 }
 
-// Banner videos downloaded once per session (multi-DB safe — see fetchLocalVideo).
+// Banner videos downloaded once per session (multi-DB safe — see downloadVideo).
 const videoCache = new Map<number, string>();
+// In-flight downloads keyed by banner id. Without this, two mounts of the same
+// slide both miss videoCache and race: the second one's delete() can wipe the
+// file the first is writing, leaving a player pointed at nothing.
+const videoInflight = new Map<number, Promise<string>>();
 
-async function fetchLocalVideo(id: number, url: string): Promise<string> {
+const VIDEO_TIMEOUT_MS = 30000;
+
+function fetchLocalVideo(id: number, url: string): Promise<string> {
   const cached = videoCache.get(id);
-  if (cached) return cached;
+  if (cached) return Promise.resolve(cached);
+  const pending = videoInflight.get(id);
+  if (pending) return pending;
+  const task = downloadVideo(id, url).finally(() => videoInflight.delete(id));
+  videoInflight.set(id, task);
+  return task;
+}
+
+async function downloadVideo(id: number, url: string): Promise<string> {
   const file = new File(Paths.cache, `signage-video-${id}.mp4`);
-  if (file.exists) file.delete();
-  // Must go through fetch with credentials: File.downloadFileAsync downloads
-  // natively and carries none of RN's cookie jar. /signage/video is auth='public',
-  // but on a multi-DB server the session cookie is what selects the database —
-  // without it Odoo can't resolve one and answers 404, so video never loads.
-  const res = await fetch(url, { credentials: 'include' });
-  // Without this check a 404 HTML body gets written as .mp4 and fails silently at
-  // playback instead of tripping the retry in BannerVideo.
-  if (!res.ok) throw new Error(`Video download failed (HTTP ${res.status})`);
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  file.write(bytes);
-  videoCache.set(id, file.uri);
-  return file.uri;
+  const controller = new AbortController();
+  // A stalled download otherwise leaves the slide spinning for the whole session.
+  const timer = setTimeout(() => controller.abort(), VIDEO_TIMEOUT_MS);
+  try {
+    // Must go through fetch with credentials: File.downloadFileAsync downloads
+    // natively and carries none of RN's cookie jar. /signage/video is auth='public',
+    // but on a multi-DB server the session cookie is what selects the database —
+    // without it Odoo can't resolve one and answers 404, so video never loads.
+    const res = await fetch(url, { credentials: 'include', signal: controller.signal });
+    if (!res.ok) throw new Error(`Video download failed (HTTP ${res.status})`);
+    // fetch follows redirects, so an expired session lands on Odoo's login page
+    // with a 200. Writing that as .mp4 gives a black frame that never recovers,
+    // which is indistinguishable from a decode failure — reject it here instead.
+    const type = (res.headers.get('content-type') || '').toLowerCase();
+    if (!type.startsWith('video/')) {
+      throw new Error(`Expected video, got "${type || 'unknown'}" — session may have expired`);
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (!bytes.byteLength) throw new Error('Video download was empty');
+    // Only now is the old file safe to drop. Re-downloading each session (rather
+    // than reusing whatever is on disk) is deliberate: the filename is keyed on
+    // banner id alone, so a video replaced in Odoo would otherwise never update.
+    if (file.exists) file.delete();
+    file.write(bytes);
+    videoCache.set(id, file.uri);
+    return file.uri;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function LocalVideo({
@@ -118,13 +148,17 @@ function LocalVideo({
 function BannerVideo({
   id,
   uri,
+  poster,
   active,
+  current,
   loop = true,
   onEnded,
 }: {
   id: number;
   uri: string;
+  poster?: string | false;
   active: boolean;
+  current: boolean;
   loop?: boolean;
   onEnded?: () => void;
 }) {
@@ -154,6 +188,17 @@ function BannerVideo({
       <View style={[styles.image, styles.center]}>
         <Ionicons name="videocam-off-outline" size={54} color="#4b4b57" />
       </View>
+    );
+  }
+  // Hold a video decoder only for the slide actually on screen. Android POS
+  // hardware exposes very few (often 2-4); past that MediaCodec allocation fails
+  // and the extra players render black with no error. Pausing does NOT free one —
+  // a paused ExoPlayer keeps its decoder — so the player has to be unmounted.
+  if (!current) {
+    return poster ? (
+      <Image source={{ uri: poster }} style={styles.image} resizeMode="contain" />
+    ) : (
+      <View style={styles.image} />
     );
   }
   if (!localUri) {
@@ -519,7 +564,9 @@ export default function SignageScreen() {
           <BannerVideo
             id={item.id}
             uri={toReachable(item.video as string, base) as string}
+            poster={item.image}
             active={i === index && !scanBusy && !paused}
+            current={i === index}
             loop={!drivesAdvance(item)}
             onEnded={i === index && drivesAdvance(item) ? onVideoEnded : undefined}
           />
@@ -577,6 +624,14 @@ export default function SignageScreen() {
             setIndex(Math.round(e.nativeEvent.contentOffset.x / W))
           }
           getItemLayout={(_, i) => ({ length: W, offset: W * i, index: i })}
+          // Which cell mounts a video player now depends on `index`, so the cells
+          // must re-render when it changes rather than relying on renderItem's
+          // closure identity happening to change. Keep the window small too, so
+          // fewer offscreen slides exist at all.
+          extraData={index}
+          windowSize={3}
+          initialNumToRender={1}
+          maxToRenderPerBatch={2}
         />
       ) : null}
 
