@@ -31,6 +31,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Brand } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
+import { useManageLock } from '@/context/manage-lock';
 import { useTabBar } from '@/context/tabbar';
 import { getSignageBanners, lookupProduct, ProductLookup, SignageBanner } from '@/services/odoo';
 import { DEFAULT_SCAN_MODE, getScanMode, ScanMode } from '@/services/scanSettings';
@@ -226,6 +227,7 @@ const BARCODE_TYPES = [
 
 export default function SignageScreen() {
   const { user } = useAuth();
+  const { lockAll } = useManageLock();
   const base = user?.base_url || '';
   const isFocused = useIsFocused();
   // Live, so banner paging stays correct on a rotating tablet and on a fixed
@@ -296,15 +298,18 @@ export default function SignageScreen() {
   }, [base]);
 
   // On focus: reload banners + the latest scan settings from Profile.
+  // Landing here also means the user left the Manage area, so drop any PIN
+  // unlock — otherwise Manage would still be open when they walk back into it.
   useFocusEffect(
     useCallback(() => {
       let alive = true;
+      lockAll();
       load();
       getScanMode().then((m) => alive && setScanMode(m));
       return () => {
         alive = false;
       };
-    }, [load]),
+    }, [load, lockAll]),
   );
 
   // Pause the camera when the app goes to the background (battery).

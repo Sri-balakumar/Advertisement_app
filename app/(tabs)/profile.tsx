@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback } from 'react';
 import {
   Image,
   Pressable,
@@ -15,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Brand, Colors, Radius, Shadow } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
+import { useManageLock } from '@/context/manage-lock';
 import { ThemePref, useThemePreference } from '@/context/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
@@ -35,7 +37,17 @@ export default function ProfileScreen() {
   const c = Colors[scheme];
   const router = useRouter();
   const { user, canManage, signOut } = useAuth();
+  const { lockAll } = useManageLock();
   const { pref, setPref } = useThemePreference();
+
+  // Landing on Profile means the user left the Manage area, so drop any PIN
+  // unlock. This is also what makes the Scan mode shortcut below ask for the
+  // PIN — it reaches Scanner & Display without passing through Manage.
+  useFocusEffect(
+    useCallback(() => {
+      lockAll();
+    }, [lockAll]),
+  );
   const { width: winW } = useWindowDimensions();
   const logoW = Math.min(Math.max(winW * 0.5, 190), 340);
 

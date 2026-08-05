@@ -5,7 +5,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Header, Screen, useC } from '@/components/ui';
 import { Brand, Radius, Type } from '@/constants/theme';
@@ -31,17 +31,15 @@ export function LockGate({
   const router = useRouter();
   const { user } = useAuth();
   const base = user?.base_url || '';
-  const { requiresPin, autoLockSeconds, refresh } = useManageLock();
+  // Unlock state lives in the provider, keyed by domain — under "Whole Manage
+  // section" the hub and its sub-screens share one, so unlocking once is enough.
+  const { requiresPin, isUnlocked, unlock, touch, refresh } = useManageLock();
 
-  // Unlocking is per visit and lives here, not in the provider — leaving the
-  // screen throws it away, so coming back always asks again.
-  const [unlocked, setUnlocked] = useState(false);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(false);
   const [retryIn, setRetryIn] = useState(0);
   const alive = useRef(true);
-  const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     alive.current = true;
@@ -50,55 +48,20 @@ export function LockGate({
     };
   }, []);
 
-  // Re-lock the moment the screen loses focus. Using focus rather than unmount
-  // matters for Manage, which is a tab and stays mounted when you switch away.
-  //
   // Re-reading the config on focus is what makes a PIN set in Odoo take effect
-  // without restarting the app — otherwise the terminal keeps whatever it read
-  // at startup and appears not to lock at all.
+  // without restarting the app. It must NOT re-lock here: navigating from the
+  // hub to a sub-screen blurs this gate, and dropping the unlock then would put
+  // the keypad straight back up — the bug this whole change is fixing.
+  // Leaving Manage is handled by lockAll() on the Home and Profile tabs.
   useFocusEffect(
     useCallback(() => {
       refresh();
       return () => {
-        setUnlocked(false);
         setPin('');
         setError('');
       };
     }, [refresh]),
   );
-
-  // Backgrounding the app does not blur the screen, so without this an unlocked
-  // screen would still be unlocked when the terminal is picked up again.
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (s) => {
-      if (s !== 'active') setUnlocked(false);
-    });
-    return () => sub.remove();
-  }, []);
-
-  const clearIdle = () => {
-    if (idle.current) {
-      clearTimeout(idle.current);
-      idle.current = null;
-    }
-  };
-
-  // Idle countdown: every touch restarts it, so it never interrupts someone
-  // mid-edit, but a screen left sitting on the counter locks itself.
-  const armIdle = useCallback(() => {
-    clearIdle();
-    idle.current = setTimeout(() => {
-      idle.current = null;
-      console.log(`[lock] ${section}: idle ${autoLockSeconds}s — re-locking`);
-      setUnlocked(false);
-    }, autoLockSeconds * 1000);
-  }, [autoLockSeconds, section]);
-
-  useEffect(() => {
-    if (unlocked) armIdle();
-    else clearIdle();
-    return clearIdle;
-  }, [unlocked, armIdle]);
 
   // Count the throttle window down so the wait is visible rather than a dead pad.
   useEffect(() => {
@@ -107,14 +70,15 @@ export function LockGate({
     return () => clearTimeout(t);
   }, [retryIn]);
 
-  if (!requiresPin(section) || unlocked) {
+  if (!requiresPin(section) || isUnlocked(section)) {
     return (
       // Report any touch without stealing it — returning false lets the gesture
-      // carry on to the screen underneath.
+      // carry on to the screen underneath. This is what keeps the idle countdown
+      // from firing while someone is actually working.
       <View
         style={{ flex: 1 }}
         onStartShouldSetResponderCapture={() => {
-          if (unlocked) armIdle();
+          touch();
           return false;
         }}>
         {children}
@@ -130,7 +94,7 @@ export function LockGate({
       if (!alive.current) return;
       if (res.ok) {
         setPin('');
-        setUnlocked(true);
+        unlock(section);
         return;
       }
       setPin('');
