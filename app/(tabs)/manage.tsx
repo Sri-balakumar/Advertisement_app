@@ -7,6 +7,7 @@ import { Card, Header, Screen, SectionLabel, useC } from '@/components/ui';
 import { Radius, Type } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { getSignageStats, SignageStats } from '@/services/odoo';
+import { LockGate } from '@/components/lock-gate';
 
 type Entry = {
   title: string;
@@ -24,7 +25,7 @@ const ENTRIES: Entry[] = [
   { title: 'Scan History', subtitle: 'Recent scans & missing barcodes', icon: 'time-outline', route: '/scan-history', tint: '#8b5cf6' },
 ];
 
-export default function ManageScreen() {
+function ManageHub() {
   const c = useC();
   const router = useRouter();
   const { user } = useAuth();
@@ -121,3 +122,14 @@ const styles = StyleSheet.create({
   icon: { width: 46, height: 46, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
   tip: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, marginTop: 20 },
 });
+
+// Locked when the matching option is ticked in Odoo -> Signage Scan -> App Lock.
+// Wrapping rather than checking inside means the screen's data isn't fetched
+// until the PIN is accepted.
+export default function ManageScreen() {
+  return (
+    <LockGate section="manage" title="Manage">
+      <ManageHub />
+    </LockGate>
+  );
+}

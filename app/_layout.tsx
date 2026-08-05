@@ -20,6 +20,7 @@ import '@/lib/global-font'; // side-effect: apply Inter to all Text/TextInput
 import { AnimatedSplash } from '@/components/animated-splash';
 import { RouteError } from '@/components/route-error';
 import { AuthProvider, useAuth } from '@/context/auth';
+import { ManageLockProvider } from '@/context/manage-lock';
 import { TabBarProvider } from '@/context/tabbar';
 import { ThemePreferenceProvider } from '@/context/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -82,9 +83,13 @@ function ThemedRoot() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AuthProvider>
-        <TabBarProvider>
-          <RootNavigator />
-        </TabBarProvider>
+        {/* Inside AuthProvider — the lock config is fetched from the signed-in
+            user's server. */}
+        <ManageLockProvider>
+          <TabBarProvider>
+            <RootNavigator />
+          </TabBarProvider>
+        </ManageLockProvider>
       </AuthProvider>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
     </ThemeProvider>

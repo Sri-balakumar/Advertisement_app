@@ -511,6 +511,81 @@ export async function setDetailConfig(
   };
 }
 
+/** Which Manage sections sit behind the PIN (configured in Odoo → App Lock). */
+export type LockSection =
+  | 'manage'
+  | 'products'
+  | 'banners'
+  | 'scan_fields'
+  | 'scan_settings'
+  | 'scan_history';
+
+export type ManageLock = {
+  mode: 'off' | 'all' | 'custom';
+  pin_set: boolean;
+  locked: Record<LockSection, boolean>;
+  /** Seconds of no tapping before an unlocked section locks itself again. */
+  auto_lock_seconds: number;
+};
+
+export const DEFAULT_AUTO_LOCK_SECONDS = 10;
+
+export const NO_LOCK: ManageLock = {
+  mode: 'off',
+  pin_set: false,
+  auto_lock_seconds: DEFAULT_AUTO_LOCK_SECONDS,
+  locked: {
+    manage: false,
+    products: false,
+    banners: false,
+    scan_fields: false,
+    scan_settings: false,
+    scan_history: false,
+  },
+};
+
+export async function getManageLock(baseUrl: string): Promise<ManageLock> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/manage_lock/get`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: {},
+  });
+  const r = data?.result || {};
+  const locked = r.locked || {};
+  return {
+    mode: r.mode === 'all' || r.mode === 'custom' ? r.mode : 'off',
+    pin_set: !!r.pin_set,
+    auto_lock_seconds: Number(r.auto_lock_seconds) || DEFAULT_AUTO_LOCK_SECONDS,
+    locked: {
+      manage: !!locked.manage,
+      products: !!locked.products,
+      banners: !!locked.banners,
+      scan_fields: !!locked.scan_fields,
+      scan_settings: !!locked.scan_settings,
+      scan_history: !!locked.scan_history,
+    },
+  };
+}
+
+/** Result of checking a PIN. `retry_in` is set once the server throttles guessing. */
+export type PinResult = { ok: boolean; tries_left?: number; retry_in?: number };
+
+/** The PIN is checked on the server — it is never sent to the device. */
+export async function verifyManagePin(baseUrl: string, pin: string): Promise<PinResult> {
+  const data = await postJson(`${normalizeUrl(baseUrl)}/signage/manage_lock/verify`, {
+    jsonrpc: '2.0',
+    method: 'call',
+    params: { pin },
+  });
+  if (data?.error) throw new Error(errOf(data, 'Could not check the PIN.'));
+  const r = data?.result || {};
+  return {
+    ok: !!r.ok,
+    tries_left: typeof r.tries_left === 'number' ? r.tries_left : undefined,
+    retry_in: typeof r.retry_in === 'number' ? r.retry_in : undefined,
+  };
+}
+
 /** Look up a product by barcode; returns the admin-selected fields for it. */
 export async function lookupProduct(baseUrl: string, barcode: string): Promise<ProductLookup> {
   const data = await postJson(`${normalizeUrl(baseUrl)}/signage/lookup`, {

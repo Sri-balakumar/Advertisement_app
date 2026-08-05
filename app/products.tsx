@@ -17,8 +17,9 @@ import { Card, EmptyState, Header, HeaderIcon, Screen, Skeleton, useC } from '@/
 import { Brand, Radius, Type } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { getScanProducts, ScanProduct } from '@/services/odoo';
+import { LockGate } from '@/components/lock-gate';
 
-export default function ProductsScreen() {
+function ProductsList() {
   const c = useC();
   const router = useRouter();
   const { user } = useAuth();
@@ -200,3 +201,14 @@ const styles = StyleSheet.create({
   },
   fabInner: { flex: 1, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
 });
+
+// Locked when the matching option is ticked in Odoo -> Signage Scan -> App Lock.
+// Wrapping rather than checking inside means the screen's data isn't fetched
+// until the PIN is accepted.
+export default function ProductsScreen() {
+  return (
+    <LockGate section="products" title="Products">
+      <ProductsList />
+    </LockGate>
+  );
+}

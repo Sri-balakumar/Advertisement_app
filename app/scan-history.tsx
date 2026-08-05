@@ -16,6 +16,7 @@ import { Card, EmptyState, Header, HeaderIcon, Screen, Skeleton, useC } from '@/
 import { Brand, Radius, Shadow, Type } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { clearScanLog, getScanLog, ScanLogItem } from '@/services/odoo';
+import { LockGate } from '@/components/lock-gate';
 
 const STATE_META: Record<string, { label: string; tint: string; bg: string }> = {
   found: { label: 'Found', tint: '#059669', bg: 'rgba(16,185,129,0.14)' },
@@ -38,7 +39,7 @@ function relTime(iso: string): string {
   return new Date(t).toLocaleDateString();
 }
 
-export default function ScanHistoryScreen() {
+function ScanHistoryList() {
   const c = useC();
   const router = useRouter();
   const { user } = useAuth();
@@ -315,3 +316,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+// Locked when the matching option is ticked in Odoo -> Signage Scan -> App Lock.
+// Wrapping rather than checking inside means the screen's data isn't fetched
+// until the PIN is accepted.
+export default function ScanHistoryScreen() {
+  return (
+    <LockGate section="scan_history" title="Scan History">
+      <ScanHistoryList />
+    </LockGate>
+  );
+}

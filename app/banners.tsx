@@ -9,6 +9,7 @@ import { Brand, Radius, Type } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { CardVideo } from '@/components/card-video';
 import { getManageBanners, ManageBanner } from '@/services/odoo';
+import { LockGate } from '@/components/lock-gate';
 
 function toReachable(url: string | false, base: string): string | false {
   if (!url || !base) return url;
@@ -24,7 +25,7 @@ function Badge({ text, bg }: { text: string; bg: string }) {
   );
 }
 
-export default function BannersScreen() {
+function BannersList() {
   const c = useC();
   // Live width so the two-up grid stays correct on a rotated tablet or a wide
   // POS panel, instead of the size captured when the module first loaded.
@@ -161,3 +162,14 @@ const styles = StyleSheet.create({
   },
   fabInner: { flex: 1, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
 });
+
+// Locked when the matching option is ticked in Odoo -> Signage Scan -> App Lock.
+// Wrapping rather than checking inside means the screen's data isn't fetched
+// until the PIN is accepted.
+export default function BannersScreen() {
+  return (
+    <LockGate section="banners" title="Banners">
+      <BannersList />
+    </LockGate>
+  );
+}

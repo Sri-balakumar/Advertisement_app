@@ -8,13 +8,14 @@ import { Brand, Radius, Type } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { getDetailConfig, setDetailConfig } from '@/services/odoo';
 import { DEFAULT_SCAN_MODE, getScanMode, ScanMode, setScanMode } from '@/services/scanSettings';
+import { LockGate } from '@/components/lock-gate';
 
 const MODES: { key: ScanMode; label: string; sub: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: 'usb', label: 'USB scanner', sub: 'For POS terminals with a barcode scanner. The camera stays off.', icon: 'hardware-chip-outline' },
   { key: 'camera', label: 'Mobile camera', sub: 'For phones and tablets. A camera window scans on the Home screen.', icon: 'camera-outline' },
 ];
 
-export default function ScanSettingsScreen() {
+function ScanSettingsForm() {
   const c = useC();
   const router = useRouter();
   const { user } = useAuth();
@@ -138,3 +139,14 @@ const styles = StyleSheet.create({
   unitSeg: { flexDirection: 'row', borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, overflow: 'hidden' },
   unitItem: { paddingHorizontal: 14, paddingVertical: 10 },
 });
+
+// Locked when the matching option is ticked in Odoo -> Signage Scan -> App Lock.
+// Wrapping rather than checking inside means the screen's data isn't fetched
+// until the PIN is accepted.
+export default function ScanSettingsScreen() {
+  return (
+    <LockGate section="scan_settings" title="Scanner & Display">
+      <ScanSettingsForm />
+    </LockGate>
+  );
+}

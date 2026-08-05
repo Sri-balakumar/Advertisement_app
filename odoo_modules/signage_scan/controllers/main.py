@@ -250,6 +250,59 @@ class SignageController(http.Controller):
         return {'ok': True, 'value': cfg.detail_value, 'unit': cfg.detail_unit,
                 'seconds': cfg.detail_seconds or 8}
 
+    # ---- Manage PIN lock ---------------------------------------------------
+
+    PIN_MAX_TRIES = 5
+    PIN_LOCKOUT_SECONDS = 60
+
+    @http.route('/signage/manage_lock/get', type='jsonrpc', auth='user', methods=['POST'])
+    def signage_manage_lock_get(self, **kw):
+        """Which Manage sections need a PIN. Deliberately not manager-gated — a
+        terminal has to know what to lock — and it exposes neither the PIN nor
+        its hash."""
+        cfg = request.env['signage.config'].sudo().get_singleton()
+        return {
+            'mode': cfg.pin_mode,
+            'pin_set': bool(cfg.manage_pin_hash),
+            'locked': cfg._locked_sections(),
+            'auto_lock_seconds': cfg.auto_lock_seconds or 10,
+        }
+
+    @http.route('/signage/manage_lock/verify', type='jsonrpc', auth='user', methods=['POST'])
+    def signage_manage_lock_verify(self, pin=None, **kw):
+        """Check a PIN typed on a terminal. The PIN itself never leaves the
+        server, so the app can't be made to leak it.
+
+        Throttled per session: a 4-digit PIN falls to brute force in seconds
+        otherwise. Counting in the session ties the lockout to the device that is
+        guessing rather than to the (shared) admin user.
+        """
+        now = fields.Datetime.now()
+        blocked_until = request.session.get('signage_pin_blocked_until')
+        if blocked_until:
+            blocked_until = fields.Datetime.to_datetime(blocked_until)
+            if blocked_until > now:
+                return {'ok': False,
+                        'retry_in': int((blocked_until - now).total_seconds())}
+            request.session.pop('signage_pin_blocked_until', None)
+            request.session['signage_pin_tries'] = 0
+
+        cfg = request.env['signage.config'].sudo().get_singleton()
+        if cfg._check_manage_pin(pin):
+            request.session['signage_pin_tries'] = 0
+            return {'ok': True}
+
+        tries = (request.session.get('signage_pin_tries') or 0) + 1
+        request.session['signage_pin_tries'] = tries
+        if tries >= self.PIN_MAX_TRIES:
+            until = now + timedelta(seconds=self.PIN_LOCKOUT_SECONDS)
+            request.session['signage_pin_blocked_until'] = fields.Datetime.to_string(until)
+            request.session['signage_pin_tries'] = 0
+            _logger.warning("[signage.lock] PIN locked out for user=%s",
+                            request.env.user.login)
+            return {'ok': False, 'retry_in': self.PIN_LOCKOUT_SECONDS}
+        return {'ok': False, 'tries_left': self.PIN_MAX_TRIES - tries}
+
     @http.route('/signage/global_fields/get', type='jsonrpc', auth='user', methods=['POST'])
     def signage_global_fields_get(self, **kw):
         """Global scan-fields config for the app: the master mode plus the shared

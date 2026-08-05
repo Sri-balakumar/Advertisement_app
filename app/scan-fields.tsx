@@ -17,6 +17,7 @@ import {
 import { Card, EmptyState, Header, HeaderIcon, Screen, Skeleton, useC } from '@/components/ui';
 import { Brand, Radius, Type } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
+import { LockGate } from '@/components/lock-gate';
 import {
   getGlobalScanFields,
   getScanProducts,
@@ -25,7 +26,7 @@ import {
   toggleScanProduct,
 } from '@/services/odoo';
 
-export default function ScanFieldsScreen() {
+function ScanFieldsList() {
   const c = useC();
   const router = useRouter();
   const { user } = useAuth();
@@ -276,3 +277,14 @@ const styles = StyleSheet.create({
   thumbEmpty: { alignItems: 'center', justifyContent: 'center' },
   switchWrap: { width: 52, alignItems: 'center', justifyContent: 'center' },
 });
+
+// Locked when the matching option is ticked in Odoo -> Signage Scan -> App Lock.
+// Wrapping rather than checking inside means the screen's data isn't fetched
+// until the PIN is accepted.
+export default function ScanFieldsScreen() {
+  return (
+    <LockGate section="scan_fields" title="Scan Fields">
+      <ScanFieldsList />
+    </LockGate>
+  );
+}

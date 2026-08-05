@@ -88,6 +88,103 @@
         </field>
     </record>
 
+    <!-- App Lock: a PIN in front of the app's Manage screens, admins included.
+         Developer-mode only — see the menuitem at the bottom. -->
+    <record id="signage_app_lock_form" model="ir.ui.view">
+        <field name="name">signage.config.app.lock.form</field>
+        <field name="model">signage.config</field>
+        <field name="arch" type="xml">
+            <form string="App Lock" create="false" delete="false">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>App Lock</h1>
+                    </div>
+                    <div class="alert alert-info" role="alert">
+                        <i class="fa fa-info-circle me-1"/>
+                        Asks for a PIN before the app's <b>Manage</b> screens open — including
+                        for administrators. This guards the terminal at the counter; it does
+                        not change what the server allows, so a terminal signed in as an
+                        administrator still has administrator rights.
+                    </div>
+                    <group>
+                        <field name="pin_is_set" invisible="1"/>
+                        <!-- The entry box only exists while no PIN is set. Once one
+                             is set the only action offered is Remove — changing it
+                             means removing the old one first, so there is never a
+                             box sitting there that looks like it holds the PIN. -->
+                        <field name="manage_pin" password="True" invisible="pin_is_set"
+                               placeholder="4 digits, numbers only"/>
+                        <div colspan="2">
+                            <div invisible="pin_is_set" class="text-muted">
+                                <i class="fa fa-exclamation-triangle me-1"/>No PIN set yet —
+                                nothing is locked until you set one.
+                            </div>
+                            <div invisible="not pin_is_set">
+                                <span class="text-success">
+                                    <i class="fa fa-check-circle me-1"/><b>A PIN is set.</b>
+                                </span>
+                                <button name="action_clear_manage_pin" type="object"
+                                        string="Remove PIN" class="btn-link"
+                                        confirm="Remove the PIN? Every Manage screen will open freely until you set a new one."/>
+                                <div class="text-muted">
+                                    To use a different PIN, remove this one first — then the
+                                    entry box comes back.
+                                </div>
+                            </div>
+                        </div>
+                    </group>
+                    <group string="What to lock">
+                        <field name="pin_mode" widget="radio"/>
+                    </group>
+                    <group>
+                        <label for="auto_lock_seconds"/>
+                        <div class="o_row">
+                            <field name="auto_lock_seconds" class="oe_inline"/>
+                            <span class="oe_inline">seconds of no tapping</span>
+                        </div>
+                    </group>
+                    <group invisible="pin_mode != 'custom'">
+                        <field name="lock_products"/>
+                        <field name="lock_banners"/>
+                        <field name="lock_scan_fields"/>
+                        <field name="lock_scan_settings"/>
+                        <field name="lock_scan_history"/>
+                    </group>
+                    <p class="text-muted" invisible="pin_mode != 'custom'">
+                        Locking <b>Scanner &amp; Display</b> also locks the <b>Scan mode</b>
+                        shortcut on the app's Profile screen — without that the PIN is bypassed
+                        by going that way round. Shop staff would then need the PIN to switch
+                        between the USB scanner and the camera.
+                    </p>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="signage_app_lock_action" model="ir.actions.act_window">
+        <field name="name">App Lock</field>
+        <field name="res_model">signage.config</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="signage_app_lock_form"/>
+        <field name="res_id" ref="default_config"/>
+        <field name="target">current</field>
+        <!-- Odoo 19 names this group_ids (not groups_id), and checks it with
+             has_group, which is debug-aware — so the form is unreachable by URL
+             unless developer mode is on. -->
+        <field name="group_ids" eval="[(4, ref('base.group_no_one'))]"/>
+    </record>
+
+    <!-- base.group_no_one only resolves true while developer mode is on
+         (has_group special-cases it against request.session.debug), so this menu
+         is hidden in normal use. The parent menu already requires group_system,
+         and a hidden parent hides its children — so the effective rule is
+         administrator AND developer mode, which listing both groups here would
+         not give (that would be a union). -->
+    <menuitem id="signage_app_lock_menu" name="App Lock"
+              parent="signage_menu_root"
+              action="signage_app_lock_action"
+              groups="base.group_no_one" sequence="45"/>
+
     <record id="signage_global_fields_action" model="ir.actions.act_window">
         <field name="name">Same Fields for All</field>
         <field name="res_model">signage.config</field>
